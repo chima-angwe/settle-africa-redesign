@@ -161,10 +161,25 @@ function Dashboard({ name, transfers, setPage, onSelectTransfer }: { name: strin
   const firstName = name.split(' ')[0]
   return <><div className="page-heading dashboard-heading"><div><h1>Good morning, {firstName}</h1></div></div>
     <section className="content-section dashboard-quick-section"><div className="section-heading"><div><h2>Quick actions</h2><p>Pick up where you left off.</p></div></div><div className="quick-grid"><QuickAction icon="send" title="Send money" note="Start a new transfer" onClick={() => setPage('Send money')}/><QuickAction icon="users" title="Recipients" note="Manage saved people" onClick={() => setPage('Recipients')}/><QuickAction icon="clock" title="Transactions" note="See your transfer history" onClick={() => setPage('Transactions')}/><QuickAction icon="search" title="Track a transfer" note="Follow a payment" onClick={() => setPage('Track transaction')}/></div></section>
-    <section className="welcome-banner"><div className="welcome-copy"><span className="banner-kicker"><i/> YOUR SETTLE ACCOUNT</span><h2>Money moves better<br/>when you know where it’s going.</h2><p>Send to the people who matter. We’ll keep you in the loop.</p><button className="text-button" onClick={() => setPage('Send money')}>Start a transfer <span>→</span></button></div><div className="banner-visual"><div className="banner-glow"/><div className="floating-currency currency-one">$<small>USD</small></div><div className="floating-currency currency-two">₦<small>NGN</small></div><div className="floating-currency currency-three">K<small>KES</small></div><div className="banner-arc arc-a"/><div className="banner-arc arc-b"/><div className="banner-center"><LogoMark/></div></div></section>
+    <RateMarquee/>
     <div className="stat-grid"><StatCard label="Transfer limit" value="₦1,000,000" note="Available this month" icon="card" tag="AVAILABLE"/><StatCard label="Sent this month" value="$450.00" note="Across 4 transfers" icon="send"/><StatCard label="In progress" value="1 transfer" note="Estimated arrival · Today" icon="clock"/><StatCard label="Account status" value="Unverified" note="Complete verification" icon="shield" tag="ACTION NEEDED"/></div>
     <section className="content-section activity-section"><div className="section-heading"><div><h2>Recent activity</h2><p>Your latest money movements.</p></div><button className="link-button" onClick={() => setPage('Transactions')}>View all <span>→</span></button></div><TransferTable transfers={transfers.slice(0,3)} onSelect={onSelectTransfer}/></section>
   </>
+}
+function RateMarquee() {
+  const items = [
+    { flag: '🇺🇸', code: 'USD', value: '₦1,550.00' },
+    { flag: '🇬🇧', code: 'GBP', value: '₦2,050.00' },
+    { flag: '🇪🇺', code: 'EUR', value: '₦1,680.00' },
+    { flag: '🇰🇪', code: 'KES', value: '₦11.40' },
+    { flag: '🇬🇭', code: 'GHS', value: '₦104.00' },
+    { flag: '🇿🇦', code: 'ZAR', value: '₦83.00' },
+  ]
+  const ticker = (copy = false) => <div className="rate-marquee-group" aria-hidden={copy || undefined}>{items.map(item => <div className="rate-tile" key={item.code}><span className="rate-flag">{item.flag}</span><span className="rate-info"><strong>{item.code}<small> / NGN</small></strong><b>{item.value}</b></span></div>)}</div>
+  return <section className="rate-banner" aria-label="Illustrative exchange rates against the Nigerian naira">
+    <div className="rate-banner-heading"><h2>Rates <span>· NGN</span></h2><span className="rate-demo-label"><i/> Illustrative</span></div>
+    <div className="rate-marquee" tabIndex={0}><div className="rate-marquee-track">{ticker()}{ticker(true)}</div></div>
+  </section>
 }
 function StatCard({ label, value, note, icon, tag }: { label: string; value: string; note: string; icon: string; tag?: string }) { return <div className="stat-card"><div className="stat-top"><span className="stat-icon"><Icon name={icon}/></span>{tag && <span className={`stat-tag ${tag === 'ACTION NEEDED' ? 'tag-warn' : ''}`}>{tag}</span>}</div><span className="stat-label">{label}</span><strong className="stat-value">{value}</strong><span className="stat-note">{note}</span></div> }
 function QuickAction({ icon, title, note, onClick }: { icon: string; title: string; note: string; onClick: () => void }) { return <button className="quick-card" onClick={onClick}><span className="quick-icon"><Icon name={icon}/></span><span><strong>{title}</strong><small>{note}</small></span><Icon name="chevron" size={17}/></button> }

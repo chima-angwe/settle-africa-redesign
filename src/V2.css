@@ -465,3 +465,36 @@ a { color: inherit; }
   .send-layout .form-step-heading p { font-size: 12px; }
   .send-layout .aside-line strong { font-size: 11px; }
 }
+
+.rate-banner {
+  overflow: hidden;
+  margin: 0 0 20px;
+  padding: 19px 22px 22px;
+  border-radius: 22px;
+  background: #101010;
+  color: #fff;
+}
+.rate-banner-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.rate-banner-heading h2 { margin: 0; color: #fff; font: 700 16px 'Manrope',sans-serif; }
+.rate-banner-heading h2 span { color: #aaa; font-weight: 500; }
+.rate-demo-label { display: inline-flex; align-items: center; gap: 6px; color: #aaa; font-size: 10px; }
+.rate-demo-label i { width: 6px; height: 6px; border-radius: 50%; background: #aaa; }
+.rate-marquee { overflow: hidden; outline: none; }
+.rate-marquee-track,.rate-marquee-group { display: flex; width: max-content; }
+.rate-marquee-track { animation: settle-rates-scroll 48s linear infinite; }
+.rate-marquee:hover .rate-marquee-track,.rate-marquee:focus-visible .rate-marquee-track { animation-play-state: paused; }
+.rate-marquee-group { gap: 10px; padding-right: 10px; }
+.rate-tile { display: flex; min-width: 170px; align-items: center; gap: 11px; padding: 11px 14px; border: 1px solid #343434; border-radius: 15px; background: #1c1c1c; }
+.rate-flag { display: grid; width: 35px; height: 35px; flex: 0 0 35px; place-items: center; border: 1px solid #414141; border-radius: 50%; background: #272727; font-size: 18px; }
+.rate-info { display: grid; gap: 3px; }
+.rate-info strong { color: #fff; font-size: 12px; }
+.rate-info strong small { color: #999; font-size: 10px; font-weight: 500; }
+.rate-info b { color: #ddd; font-size: 13px; font-weight: 600; }
+@keyframes settle-rates-scroll { to { transform: translateX(-50%); } }
+@media (max-width: 650px) {
+  .rate-banner { margin-bottom: 16px; padding: 16px 14px 17px; border-radius: 18px; }
+  .rate-tile { min-width: 145px; padding: 9px 11px; }
+  .rate-flag { width: 31px; height: 31px; flex-basis: 31px; font-size: 16px; }
+  .rate-info b { font-size: 12px; }
+}
+@media (prefers-reduced-motion: reduce) { .rate-marquee-track { animation: none; } }
