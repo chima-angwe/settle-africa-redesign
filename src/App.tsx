@@ -207,6 +207,7 @@ function BusinessDashboard({ businessName, transfers, setPage, onSelectTransfer 
     <div className="business-demo-note"><span><Icon name="shield" size={17}/></span><div><strong>Prototype workspace</strong><small>Figures, approvals and payment activity shown here are sample data. No payments are sent.</small></div></div>
     <div className="stat-grid business-stat-grid"><StatCard label="Monthly transfer limit" value="₦25,000,000" note="Illustrative account limit" icon="card" tag="DEMO"/><StatCard label="Sent this month" value="₦4,280,000" note="Across 18 payments" icon="send"/><StatCard label="Needs approval" value={String(requests.filter(item => !approved.includes(item.id)).length)} note="Payments awaiting review" icon="clock" tag="REVIEW"/><StatCard label="Team members" value="4 members" note="Owner and 3 team members" icon="users"/></div>
     <section className="content-section dashboard-quick-section"><div className="section-heading"><div><h2>Business actions</h2><p>Common tasks for your team.</p></div></div><div className="quick-grid"><QuickAction icon="send" title="New payment" note="Send to a business recipient" onClick={() => setPage('Send money')}/><QuickAction icon="users" title="Recipients" note="Manage saved payees" onClick={() => setPage('Recipients')}/><QuickAction icon="clock" title="Payment history" note="Review business transfers" onClick={() => setPage('Transactions')}/><QuickAction icon="search" title="Track a payment" note="Follow a transfer" onClick={() => setPage('Track transaction')}/></div></section>
+    <RateMarquee/>
     <section className="content-section business-approvals"><div className="section-heading"><div><h2>Payment approvals</h2><p>Review outgoing payments before they are released.</p></div><span className="approval-count">{requests.filter(item => !approved.includes(item.id)).length} to review</span></div><div className="approval-list">{requests.map(item => <article className="approval-row" key={item.id}><span className="approval-avatar"><Icon name="building" size={18}/></span><div className="approval-payee"><strong>{item.payee}</strong><small>{item.detail} · Ref {item.id}</small></div><strong className="approval-amount">{item.amount}</strong>{approved.includes(item.id) ? <span className="approval-done"><Icon name="checkCircle" size={16}/> Approved in demo</span> : <button className="button button-secondary button-small" onClick={() => approve(item.id)}>Approve demo</button>}</article>)}</div><p className="prototype-caption">Approval actions update this local demo only. Team roles and payment release require backend support.</p></section>
     <section className="content-section activity-section"><div className="section-heading"><div><h2>Recent business payments</h2><p>Latest payment activity for this demo account.</p></div><button className="link-button" onClick={() => setPage('Transactions')}>View all <span>→</span></button></div><TransferTable transfers={transfers.slice(0,3)} onSelect={onSelectTransfer}/></section>
   </>
@@ -233,18 +234,48 @@ function TransferCalculator({ onSend }: { onSend: () => void }) {
 }
 function RateMarquee() {
   const items = [
-    { flag: '🇺🇸', code: 'USD', value: '₦1,550.00' },
-    { flag: '🇬🇧', code: 'GBP', value: '₦2,050.00' },
-    { flag: '🇪🇺', code: 'EUR', value: '₦1,680.00' },
-    { flag: '🇰🇪', code: 'KES', value: '₦11.40' },
-    { flag: '🇬🇭', code: 'GHS', value: '₦104.00' },
-    { flag: '🇿🇦', code: 'ZAR', value: '₦83.00' },
+    { country: 'Nigeria', countryCode: 'ng', code: 'NGN' },
+    { country: 'Ghana', countryCode: 'gh', code: 'GHS' },
+    { country: 'Kenya', countryCode: 'ke', code: 'KES' },
+    { country: 'Uganda', countryCode: 'ug', code: 'UGX' },
+    { country: 'Tanzania', countryCode: 'tz', code: 'TZS' },
+    { country: 'Rwanda', countryCode: 'rw', code: 'RWF' },
   ]
-  const ticker = (copy = false) => <div className="rate-marquee-group" aria-hidden={copy || undefined}>{items.map(item => <div className="rate-tile" key={item.code}><span className="rate-flag">{item.flag}</span><span className="rate-info"><strong>{item.code}<small> / NGN</small></strong><b>{item.value}</b></span></div>)}</div>
-  return <section className="rate-banner" aria-label="Illustrative exchange rates against the Nigerian naira">
-    <div className="rate-banner-heading"><h2>Rates <span>· NGN</span></h2><span className="rate-demo-label"><i/> Illustrative</span></div>
+  const [rateData, setRateData] = useState<{ date: string; rates: Record<string, number> } | null>(() => { try { return JSON.parse(localStorage.getItem('settle-demo-market-rates') || 'null') } catch { return null } })
+  const [loadingRates, setLoadingRates] = useState(true)
+  useEffect(() => {
+    let active = true
+    const loadRates = async () => {
+      try {
+        const response = await fetch('https://api.frankfurter.dev/v2/rates?base=NGN&quotes=GHS,KES,UGX,TZS,RWF')
+        if (!response.ok) throw new Error('Rate request failed')
+        const rows: { date: string; quote: string; rate: number }[] = await response.json()
+        const result: { date: string; rates: Record<string, number> } = { date: rows[0]?.date ?? '', rates: Object.fromEntries(rows.map(row => [row.quote, row.rate])) }
+        if (!result.date || !Object.keys(result.rates).length) throw new Error('No rates returned')
+        if (active) { setRateData(result); localStorage.setItem('settle-demo-market-rates', JSON.stringify(result)) }
+      } catch {
+        // Keep the last successful daily reference rates visible when offline.
+      } finally { if (active) setLoadingRates(false) }
+    }
+    loadRates()
+    const refresh = window.setInterval(loadRates, 6 * 60 * 60 * 1000)
+    return () => { active = false; window.clearInterval(refresh) }
+  }, [])
+  const dateLabel = rateData?.date ? new Date(`${rateData.date}T12:00:00`).toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric' }) : null
+  const ticker = (copy = false) => <div className="rate-marquee-group" aria-hidden={copy || undefined}>{items.map(item => {
+    const reciprocal = item.code === 'NGN' ? 1 : rateData?.rates[item.code] ? 1 / rateData.rates[item.code] : null
+    const value = reciprocal === null ? (loadingRates ? 'Loading rate…' : 'Rate unavailable') : `₦${reciprocal.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    return <div className="rate-tile" key={item.code}><span className="rate-flag"><CountryFlag code={item.countryCode} country={item.country}/></span><span className="rate-info"><strong>{item.country}<small> · {item.code}</small></strong><b>1 {item.code} = {value}</b></span></div>
+  })}</div>
+  return <section className="rate-banner" aria-label="Daily reference exchange rates against the Nigerian naira">
+    <div className="rate-banner-heading"><h2>Reference rates <span>· NGN</span></h2><span className="rate-demo-label"><i/> {dateLabel ? `Frankfurter · ${dateLabel}` : loadingRates ? 'Loading rates' : 'Rates unavailable'}</span></div>
     <div className="rate-marquee" tabIndex={0}><div className="rate-marquee-track">{ticker()}{ticker(true)}</div></div>
   </section>
+}
+function CountryFlag({ code, country }: { code: string; country: string }) {
+  const [failed, setFailed] = useState(false)
+  const flag = String.fromCodePoint(...[...code.toUpperCase()].map(char => 127397 + char.charCodeAt(0)))
+  return failed ? <span className="rate-flag-fallback" role="img" aria-label={`${country} flag`}>{flag}</span> : <img src={`https://flagcdn.com/w40/${code}.png`} alt={`${country} flag`} loading="lazy" onError={() => setFailed(true)}/>
 }
 function StatCard({ label, value, note, icon, tag }: { label: string; value: string; note: string; icon: string; tag?: string }) { return <div className="stat-card"><div className="stat-top"><span className="stat-icon"><Icon name={icon}/></span>{tag && <span className={`stat-tag ${tag === 'ACTION NEEDED' ? 'tag-warn' : ''}`}>{tag}</span>}</div><span className="stat-label">{label}</span><strong className="stat-value">{value}</strong><span className="stat-note">{note}</span></div> }
 function QuickAction({ icon, title, note, onClick }: { icon: string; title: string; note: string; onClick: () => void }) { return <button className="quick-card" onClick={onClick}><span className="quick-icon"><Icon name={icon}/></span><span><strong>{title}</strong><small>{note}</small></span><Icon name="chevron" size={17}/></button> }

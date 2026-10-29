@@ -540,16 +540,19 @@ a { color: inherit; }
 .rate-marquee-group { gap: 10px; padding-right: 10px; }
 .rate-tile { display: flex; min-width: 170px; align-items: center; gap: 11px; padding: 11px 14px; border: 1px solid #343434; border-radius: 15px; background: #1c1c1c; }
 .rate-flag { display: grid; width: 35px; height: 35px; flex: 0 0 35px; place-items: center; border: 1px solid #414141; border-radius: 50%; background: #272727; font-size: 18px; }
+.rate-flag img { display: block; width: 23px; height: 16px; border-radius: 2px; object-fit: cover; }
+.rate-flag-fallback { font-size: 19px; line-height: 1; }
 .rate-info { display: grid; gap: 3px; }
 .rate-info strong { color: #fff; font-size: 12px; }
 .rate-info strong small { color: #999; font-size: 10px; font-weight: 500; }
-.rate-info b { color: #ddd; font-size: 13px; font-weight: 600; }
+.rate-info b { color: #ddd; font-size: 12px; font-weight: 600; white-space: nowrap; }
 @keyframes settle-rates-scroll { to { transform: translateX(-50%); } }
 @media (max-width: 650px) {
   .rate-banner { margin-bottom: 16px; padding: 16px 14px 17px; border-radius: 18px; }
   .rate-tile { min-width: 145px; padding: 9px 11px; }
   .rate-flag { width: 31px; height: 31px; flex-basis: 31px; font-size: 16px; }
-  .rate-info b { font-size: 12px; }
+  .rate-flag img { width: 21px; height: 15px; }
+  .rate-info b { font-size: 11px; }
 }
 @media (prefers-reduced-motion: reduce) { .rate-marquee-track { animation: none; } }
 
