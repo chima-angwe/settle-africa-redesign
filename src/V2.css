@@ -286,6 +286,60 @@ a { color: inherit; }
 .profile-name { font-size: 13px; font-weight: 700; }
 .profile-copy small { color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: 1px; }
 .profile-open { display: grid; width: 25px; height: 25px; place-items: center; margin-left: 5px; border-radius: 50%; background: var(--soft); color: var(--muted); transform: rotate(90deg); }
+.profile-open.open { transform: rotate(-90deg); }
+.account-switcher { position: relative; }
+.account-menu-scrim { position: fixed; inset: 0; z-index: 1; width: 100%; height: 100%; border: 0; background: transparent; }
+.account-switch-menu { position: absolute; z-index: 2; top: calc(100% + 10px); right: 0; width: min(320px,calc(100vw - 24px)); padding: 9px; border: 1px solid var(--line); border-radius: 20px; background: var(--paper); box-shadow: 0 18px 55px #0002; }
+.account-switch-title { display: grid; gap: 4px; padding: 10px 11px 13px; border-bottom: 1px solid var(--line); }
+.account-switch-title strong { color: var(--ink); font: 700 14px 'Manrope',sans-serif; }
+.account-switch-title small,.account-switch-option small { color: var(--muted); font-size: 11px; }
+.account-switch-option { display: flex; width: 100%; align-items: center; gap: 11px; margin-top: 5px; padding: 10px; border: 1px solid transparent; border-radius: 14px; background: transparent; color: var(--ink); text-align: left; }
+.account-switch-option:hover,.account-switch-option.selected { border-color: var(--line); background: var(--soft); }
+.account-option-avatar { display: grid; width: 40px; height: 40px; flex: 0 0 40px; place-items: center; border-radius: 50%; background: var(--ink); color: var(--inverse-text); font-size: 12px; font-weight: 700; }
+.account-option-business { border: 1px solid var(--line); background: var(--paper); color: var(--ink); }
+.account-switch-option > span:nth-child(2) { display: grid; flex: 1; gap: 4px; }
+.account-switch-option > span:nth-child(2) strong { font-size: 13px; }
+.account-switch-option > svg { color: var(--ink); }
+.account-switch-footnote { padding: 11px 10px 5px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; line-height: 1.45; }
+.business-welcome { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 15px; padding: 26px 28px; border-radius: 24px; background: var(--ink); color: var(--inverse-text); }
+.business-welcome .eyebrow { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.business-welcome h1 { margin: 12px 0 5px; font: 750 clamp(24px,3vw,34px)/1.15 'Manrope',sans-serif; letter-spacing: -1px; }
+.business-welcome p { margin: 0; color: var(--muted); font-size: 14px; }
+.business-welcome .button-primary { flex: 0 0 auto; border-color: var(--inverse-text); background: var(--inverse-text); color: var(--ink); }
+.business-demo-note { display: flex; align-items: center; gap: 11px; margin-bottom: 17px; padding: 12px 15px; border: 1px solid var(--line); border-radius: 16px; background: var(--paper); }
+.business-demo-note > span { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; border: 1px solid var(--line); border-radius: 50%; color: var(--ink); }
+.business-demo-note > div { display: grid; gap: 3px; }
+.business-demo-note strong { color: var(--ink); font-size: 12px; }
+.business-demo-note small { color: var(--muted); font-size: 11px; line-height: 1.45; }
+.business-stat-grid { margin-bottom: 20px; }
+.business-approvals { margin-top: 26px; }
+.approval-count { padding: 7px 11px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 11px; font-weight: 600; }
+.approval-list { overflow: hidden; border: 1px solid var(--line); border-radius: 20px; background: var(--paper); }
+.approval-row { display: flex; min-height: 78px; align-items: center; gap: 13px; padding: 13px 17px; border-bottom: 1px solid var(--line); }
+.approval-row:last-child { border-bottom: 0; }
+.approval-avatar { display: grid; width: 40px; height: 40px; flex: 0 0 40px; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: var(--soft); color: var(--ink); }
+.approval-payee { display: grid; flex: 1; gap: 5px; min-width: 0; }
+.approval-payee strong { overflow: hidden; color: var(--ink); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.approval-payee small { color: var(--muted); font-size: 11px; }
+.approval-amount { color: var(--ink); font-size: 13px; white-space: nowrap; }
+.approval-row .button { flex: 0 0 auto; }
+.approval-done { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.business-approvals > .prototype-caption { margin-top: 9px; }
+@media (max-width: 650px) {
+  .account-switch-menu { top: calc(100% + 7px); }
+  .account-switcher .profile-chip { gap: 6px; padding: 4px 6px 4px 4px; }
+  .account-switcher .profile-open { display: grid; width: 19px; height: 19px; margin-left: 0; }
+  .account-switch-footnote { font-size: 10px; }
+  .business-welcome { align-items: flex-start; flex-direction: column; gap: 17px; padding: 21px 18px; border-radius: 20px; }
+  .business-welcome > .button { width: 100%; }
+  .business-welcome p { font-size: 12px; line-height: 1.5; }
+  .business-demo-note { align-items: flex-start; padding: 11px; }
+  .business-demo-note small { font-size: 10px; }
+  .approval-row { flex-wrap: wrap; gap: 8px 11px; padding: 12px; }
+  .approval-payee { flex-basis: calc(100% - 54px); }
+  .approval-amount { margin-left: 51px; }
+  .approval-row .button,.approval-done { margin-left: auto; }
+}
 
 /* Give cards and controls a consistent, softer shape across the portal. */
 .welcome-banner,.stat-grid,.stat-card,.quick-card,.table-wrap,.content-panel,.form-card,.transfer-aside,

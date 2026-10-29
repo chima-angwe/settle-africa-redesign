@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import './V2.css'
 
 type Page = 'Dashboard' | 'Send money' | 'Transactions' | 'Track transaction' | 'Recipients' | 'Profile'
+type AccountType = 'individual' | 'business'
 type Recipient = { id: number; name: string; country: string; method: string; account: string; initials: string }
 type Transfer = { id: string; name: string; country: string; amount: number; currency: string; status: 'Pending' | 'Completed' | 'Processing'; date: string }
 
@@ -27,11 +28,21 @@ const initialRecipients: Recipient[] = [
   { id: 2, name: 'David Kamau', country: 'Kenya', method: 'M-Pesa', account: '+254 ••• •• 456', initials: 'DK' },
   { id: 3, name: 'Amara Boateng', country: 'Ghana', method: 'Mobile money', account: '•••• 3456', initials: 'AB' },
 ]
+const businessRecipients: Recipient[] = [
+  { id: 11, name: 'Nuru Office Supplies', country: 'Kenya', method: 'Bank transfer', account: '•••• 0912', initials: 'NO' },
+  { id: 12, name: 'Kora Logistics Ltd', country: 'Ghana', method: 'Bank transfer', account: '•••• 4421', initials: 'KL' },
+  { id: 13, name: 'Amina Yusuf', country: 'Nigeria', method: 'Bank transfer', account: '•••• 8830', initials: 'AY' },
+]
 const initialTransfers: Transfer[] = [
   { id: 'ST-240918', name: 'Sarah Okafor', country: 'Nigeria', amount: 250, currency: 'USD', status: 'Completed', date: 'Today, 10:42 AM' },
   { id: 'ST-240905', name: 'David Kamau', country: 'Kenya', amount: 120, currency: 'USD', status: 'Processing', date: 'Yesterday, 4:18 PM' },
   { id: 'ST-240872', name: 'Amara Boateng', country: 'Ghana', amount: 80, currency: 'USD', status: 'Completed', date: 'Oct 18, 2026' },
   { id: 'ST-240841', name: 'Sarah Okafor', country: 'Nigeria', amount: 200, currency: 'USD', status: 'Pending', date: 'Oct 16, 2026' },
+]
+const businessTransfers: Transfer[] = [
+  { id: 'BZ-1042', name: 'Nuru Office Supplies', country: 'Kenya', amount: 184, currency: 'USD', status: 'Processing', date: 'Today, 9:15 AM' },
+  { id: 'BZ-1038', name: 'Kora Logistics Ltd', country: 'Ghana', amount: 95, currency: 'USD', status: 'Completed', date: 'Yesterday, 2:40 PM' },
+  { id: 'BZ-1031', name: 'Amina Yusuf', country: 'Nigeria', amount: 320, currency: 'USD', status: 'Completed', date: 'Oct 22, 2026' },
 ]
 
 function Icon({ name, size = 19 }: { name: string; size?: number }) {
@@ -58,6 +69,8 @@ function Icon({ name, size = 19 }: { name: string; size?: number }) {
     card: <><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 10h20"/></>,
     sun: <><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></>,
     moon: <path d="M20.9 13A9 9 0 0 1 11 3.1 9 9 0 1 0 20.9 13Z"/>,
+    building: <><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 7h1m4 0h1M9 11h1m4 0h1M9 15h1m4 0h1M10 21v-3h4v3"/></>,
+    checkCircle: <><circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16 9"/></>,
   }
   return <svg {...common}>{paths[name] ?? paths.grid}</svg>
 }
@@ -67,6 +80,9 @@ function ThemeToggle({ theme, onToggle }: { theme: 'light' | 'dark'; onToggle: (
 
 function App() {
   const [page, setPage] = useState<Page>('Dashboard')
+  const [accountType, setAccountType] = useState<AccountType>(() => localStorage.getItem('settle-demo-account-type') === 'business' ? 'business' : 'individual')
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false)
+  const [businessName, setBusinessName] = useState(() => localStorage.getItem('settle-demo-business-name') || 'Chima Ventures')
   const [theme, setTheme] = useState<'light' | 'dark'>(() => localStorage.getItem('settle-demo-theme') === 'dark' ? 'dark' : 'light')
   const [signedIn, setSignedIn] = useState(() => localStorage.getItem('settle-demo-user') === 'true')
   const [authMode, setAuthMode] = useState<'signin' | 'signup' | 'forgot'>('signin')
@@ -78,18 +94,35 @@ function App() {
     }
     return savedName
   })
-  const [recipients, setRecipients] = useState<Recipient[]>(() => JSON.parse(localStorage.getItem('settle-demo-recipients') || 'null') || initialRecipients)
-  const [transfers, setTransfers] = useState<Transfer[]>(() => JSON.parse(localStorage.getItem('settle-demo-transfers') || 'null') || initialTransfers)
+  const [accountData, setAccountData] = useState<Record<AccountType, { recipients: Recipient[]; transfers: Transfer[] }>>(() => ({
+    individual: {
+      recipients: JSON.parse(localStorage.getItem('settle-demo-individual-recipients') || localStorage.getItem('settle-demo-recipients') || 'null') || initialRecipients,
+      transfers: JSON.parse(localStorage.getItem('settle-demo-individual-transfers') || localStorage.getItem('settle-demo-transfers') || 'null') || initialTransfers,
+    },
+    business: {
+      recipients: JSON.parse(localStorage.getItem('settle-demo-business-recipients') || 'null') || businessRecipients,
+      transfers: JSON.parse(localStorage.getItem('settle-demo-business-transfers') || 'null') || businessTransfers,
+    },
+  }))
+  const { recipients, transfers } = accountData[accountType]
+  const setRecipients: React.Dispatch<React.SetStateAction<Recipient[]>> = action => setAccountData(current => ({ ...current, [accountType]: { ...current[accountType], recipients: typeof action === 'function' ? action(current[accountType].recipients) : action } }))
+  const setTransfers: React.Dispatch<React.SetStateAction<Transfer[]>> = action => setAccountData(current => ({ ...current, [accountType]: { ...current[accountType], transfers: typeof action === 'function' ? action(current[accountType].transfers) : action } }))
   const [mobileNav, setMobileNav] = useState(false)
   const [query, setQuery] = useState('')
   const [activeTransfer, setActiveTransfer] = useState<Transfer | null>(null)
   const [targetRecipientId, setTargetRecipientId] = useState<number | null>(null)
 
-  useEffect(() => { localStorage.setItem('settle-demo-recipients', JSON.stringify(recipients)) }, [recipients])
-  useEffect(() => { localStorage.setItem('settle-demo-transfers', JSON.stringify(transfers)) }, [transfers])
+  useEffect(() => { localStorage.setItem(`settle-demo-${accountType}-recipients`, JSON.stringify(recipients)); if (accountType === 'individual') localStorage.setItem('settle-demo-recipients', JSON.stringify(recipients)) }, [accountType, recipients])
+  useEffect(() => { localStorage.setItem(`settle-demo-${accountType}-transfers`, JSON.stringify(transfers)); if (accountType === 'individual') localStorage.setItem('settle-demo-transfers', JSON.stringify(transfers)) }, [accountType, transfers])
   useEffect(() => { if (signedIn) localStorage.setItem('settle-demo-user', 'true'); else localStorage.removeItem('settle-demo-user') }, [signedIn])
   useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('settle-demo-theme', theme) }, [theme])
   const toggleTheme = () => setTheme(current => current === 'light' ? 'dark' : 'light')
+  const switchAccount = (type: AccountType) => {
+    setAccountType(type)
+    localStorage.setItem('settle-demo-account-type', type)
+    setAccountMenuOpen(false)
+    setPage('Dashboard')
+  }
 
   if (!signedIn) return <AuthScreen mode={authMode} setMode={setAuthMode} theme={theme} onToggleTheme={toggleTheme} onComplete={(userName) => { setName(userName); localStorage.setItem('settle-demo-name', userName); setSignedIn(true) }} />
 
@@ -100,21 +133,21 @@ function App() {
   return <div className="portal">
     {mobileNav && <button className="scrim" aria-label="Close navigation" onClick={() => setMobileNav(false)} />}
     <aside className={`sidebar ${mobileNav ? 'sidebar-open' : ''}`}>
-      <button className="brand" onClick={() => { setPage('Dashboard'); setMobileNav(false) }}><LogoMark/><span className="brand-copy"><strong>Settle Africa</strong><small>INDIVIDUAL</small></span></button>
+      <button className="brand" onClick={() => { setPage('Dashboard'); setMobileNav(false) }}><LogoMark/><span className="brand-copy"><strong>Settle Africa</strong><small>{accountType === 'business' ? 'BUSINESS' : 'INDIVIDUAL'}</small></span></button>
       <div className="nav-caption">WORKSPACE</div>
       <nav className="main-nav" aria-label="Main navigation">{navItems.map(item => <button key={item.label} className={`nav-item ${page === item.label ? 'active' : ''}`} onClick={() => { if (item.label === 'Send money') setTargetRecipientId(null); setPage(item.label); setMobileNav(false) }}><Icon name={item.icon}/><span>{item.label}</span>{item.label === 'Track transaction' && <i className="nav-dot"/>}</button>)}</nav>
       <div className="sidebar-bottom"><div className="nav-caption">ACCOUNT</div><button className={`nav-item ${page === 'Profile' ? 'active' : ''}`} onClick={() => { setPage('Profile'); setMobileNav(false) }}><Icon name="user"/><span>Profile & settings</span></button><div className="sidebar-help"><span className="help-mark">?</span><span><strong>Need a hand?</strong><small>Our team is here to help</small></span><Icon name="chevron" size={16}/></div><button className="nav-item logout" onClick={handleLogout}><Icon name="logout"/><span>Sign out</span></button></div>
       <div className="sidebar-footnote">A clearer way to move money.</div>
     </aside>
     <main className="main-area">
-      <header className="topbar"><button className="mobile-menu" onClick={() => setMobileNav(open => !open)} aria-label={mobileNav ? 'Close navigation' : 'Open navigation'}><Icon name={mobileNav ? 'close' : 'menu'}/></button><div className="topbar-right"><ThemeToggle theme={theme} onToggle={toggleTheme}/><button className="icon-button notification" aria-label="Notifications"><Icon name="bell"/><i/></button><div className="topbar-divider"/><button className="profile-chip" onClick={() => setPage('Profile')} aria-label={`Open ${name}'s profile`}><span className="profile-avatar-wrap"><span className="avatar avatar-dark">{name.split(' ').map(part => part[0]).slice(0,2).join('')}</span><i className="profile-presence"/></span><span className="profile-copy"><strong className="profile-name">{name}</strong><small>PERSONAL ACCOUNT</small></span><span className="profile-open"><Icon name="chevron" size={15}/></span></button></div></header>
+      <header className="topbar"><button className="mobile-menu" onClick={() => setMobileNav(open => !open)} aria-label={mobileNav ? 'Close navigation' : 'Open navigation'}><Icon name={mobileNav ? 'close' : 'menu'}/></button><div className="topbar-right"><ThemeToggle theme={theme} onToggle={toggleTheme}/><button className="icon-button notification" aria-label="Notifications"><Icon name="bell"/><i/></button><div className="topbar-divider"/><div className="account-switcher"><button className="profile-chip" aria-expanded={accountMenuOpen} aria-haspopup="menu" onClick={() => setAccountMenuOpen(open => !open)} aria-label="Switch account"><span className="profile-avatar-wrap"><span className="avatar avatar-dark">{accountType === 'business' ? businessName.split(' ').map(part => part[0]).slice(0,2).join('').toUpperCase() : name.split(' ').map(part => part[0]).slice(0,2).join('').toUpperCase()}</span><i className="profile-presence"/></span><span className="profile-copy"><strong className="profile-name">{accountType === 'business' ? businessName : name}</strong><small>{accountType === 'business' ? 'BUSINESS ACCOUNT' : 'PERSONAL ACCOUNT'}</small></span><span className={`profile-open ${accountMenuOpen ? 'open' : ''}`}><Icon name="chevron" size={15}/></span></button>{accountMenuOpen && <><button className="account-menu-scrim" aria-label="Close account switcher" onClick={() => setAccountMenuOpen(false)}/><div className="account-switch-menu" role="menu" aria-label="Switch account"><div className="account-switch-title"><strong>Switch account</strong><small>Your Settle profiles</small></div><button role="menuitem" className={`account-switch-option ${accountType === 'individual' ? 'selected' : ''}`} onClick={() => switchAccount('individual')}><span className="account-option-avatar">{name.split(' ').map(part => part[0]).slice(0,2).join('').toUpperCase()}</span><span><strong>{name}</strong><small>Individual account</small></span>{accountType === 'individual' && <Icon name="checkCircle" size={18}/>}</button><button role="menuitem" className={`account-switch-option ${accountType === 'business' ? 'selected' : ''}`} onClick={() => switchAccount('business')}><span className="account-option-avatar account-option-business"><Icon name="building" size={18}/></span><span><strong>{businessName}</strong><small>Business account · Demo</small></span>{accountType === 'business' && <Icon name="checkCircle" size={18}/>}</button><div className="account-switch-footnote">Switching keeps your personal and business views separate.</div></div></>}</div></div></header>
       <div className="page-content">
-        {page === 'Dashboard' && <Dashboard name={name} transfers={transfers} setPage={(nextPage) => { if (nextPage === 'Send money') setTargetRecipientId(null); setPage(nextPage) }} onSelectTransfer={setActiveTransfer}/>}
+        {page === 'Dashboard' && (accountType === 'business' ? <BusinessDashboard businessName={businessName} transfers={transfers} setPage={(nextPage) => { if (nextPage === 'Send money') setTargetRecipientId(null); setPage(nextPage) }} onSelectTransfer={setActiveTransfer}/> : <Dashboard name={name} transfers={transfers} setPage={(nextPage) => { if (nextPage === 'Send money') setTargetRecipientId(null); setPage(nextPage) }} onSelectTransfer={setActiveTransfer}/>)}
         {page === 'Send money' && <SendMoney recipients={recipients} targetRecipientId={targetRecipientId} setTargetRecipientId={setTargetRecipientId} setRecipients={setRecipients} transfers={transfers} setTransfers={setTransfers} setPage={setPage}/>}
         {page === 'Recipients' && <Recipients recipients={recipients} setRecipients={setRecipients} onSend={(id) => { setTargetRecipientId(id); setPage('Send money') }} query={query} setQuery={setQuery}/>}
         {page === 'Transactions' && <Transactions transfers={transfers} query={query} setQuery={setQuery} onSelectTransfer={setActiveTransfer}/>}
         {page === 'Track transaction' && <Track transfers={transfers}/>}
-        {page === 'Profile' && <Profile name={name} setName={setName} onLogout={handleLogout}/>}
+        {page === 'Profile' && <Profile name={accountType === 'business' ? businessName : name} setName={accountType === 'business' ? (next => { setBusinessName(next); localStorage.setItem('settle-demo-business-name', next) }) : setName} onLogout={handleLogout} accountType={accountType}/>}
       </div>
       <footer className="page-footer"><span>© 2026 Settle Africa</span><span><i className="secure-dot"/> Your account is protected</span><a href="#support">Help & support</a></footer>
     </main>
@@ -141,7 +174,6 @@ function AuthScreen({ mode, setMode, theme, onToggleTheme, onComplete }: { mode:
   return <div className="auth-page"><div className="auth-decoration auth-orbit-one"/><div className="auth-decoration auth-orbit-two"/><div className="auth-top"><a className="brand auth-brand" href="#home"><LogoMark/><span className="brand-copy"><strong>Settle Africa</strong><small>MOVE MONEY, WITH CLARITY</small></span></a><div className="auth-top-actions"><ThemeToggle theme={theme} onToggle={onToggleTheme}/><div className="auth-top-note"><Icon name="shield" size={16}/> Secure, private transfers</div></div></div>
     <div className="auth-layout"><section className="auth-story"><span className="eyebrow"><i/> MONEY THAT MOVES WITH YOU</span><h1>Across borders.<br/><em>Without the guesswork.</em></h1><p>Send money to the people who matter, with a clear view of every step along the way.</p><div className="auth-story-points"><div><span className="story-icon"><Icon name="eye"/></span><span><strong>Know before you send</strong><small>See your rate and fees upfront.</small></span></div><div><span className="story-icon"><Icon name="search"/></span><span><strong>Follow every transfer</strong><small>Track your money from send to receive.</small></span></div></div><div className="auth-route"><span className="route-circle">N</span><div><small>YOUR MONEY, ON ITS WAY</small><div className="route-line"><b/><b/><b/></div><strong>Nairobi <span>→</span> Lagos</strong></div><span className="route-circle route-end">L</span></div></section>
       <section className="auth-card"><div className="auth-card-brand"><LogoMark/><span>SETTLE AFRICA</span></div><span className="auth-label">INDIVIDUAL ACCOUNT</span><h2>{heading}</h2><p className="auth-subtitle">{mode === 'signup' ? 'A few details and you’re ready to get started.' : mode === 'forgot' ? 'We’ll help you get back into your account.' : 'Sign in to continue to your account.'}</p>
-        {mode === 'signin' && <div className="account-tabs"><button className="selected">Individual</button><button disabled title="Business accounts are not in this prototype">Business</button></div>}
         {notice && <div className="notice success-notice"><Icon name="check" size={16}/>{notice}</div>}
         <form onSubmit={submit} className="auth-form">
           {mode === 'signup' && <label>Full name<input value={fullName} onChange={e => setFullName(e.target.value)} placeholder="e.g. Ada Okafor" autoComplete="name"/></label>}
@@ -165,6 +197,18 @@ function Dashboard({ name, transfers, setPage, onSelectTransfer }: { name: strin
     <RateMarquee/>
     <TransferCalculator onSend={() => setPage('Send money')}/>
     <section className="content-section activity-section"><div className="section-heading"><div><h2>Recent activity</h2><p>Your latest money movements.</p></div><button className="link-button" onClick={() => setPage('Transactions')}>View all <span>→</span></button></div><TransferTable transfers={transfers.slice(0,3)} onSelect={onSelectTransfer}/></section>
+  </>
+}
+function BusinessDashboard({ businessName, transfers, setPage, onSelectTransfer }: { businessName: string; transfers: Transfer[]; setPage: (page: Page) => void; onSelectTransfer: (transfer: Transfer) => void }) {
+  const [approved, setApproved] = useState<string[]>(() => JSON.parse(localStorage.getItem('settle-demo-business-approved') || '[]'))
+  const requests = [{ id: 'AP-1042', payee: 'Nuru Office Supplies', detail: 'Kenya · Bank transfer', amount: 'KES 184,000' }, { id: 'AP-1041', payee: 'Kora Logistics Ltd', detail: 'Ghana · Bank transfer', amount: 'GHS 12,600' }]
+  const approve = (id: string) => setApproved(current => { const next = [...new Set([...current, id])]; localStorage.setItem('settle-demo-business-approved', JSON.stringify(next)); return next })
+  return <><div className="business-welcome"><div><span className="eyebrow"><Icon name="building" size={14}/> BUSINESS WORKSPACE · DEMO</span><h1>{businessName}</h1><p>Payments, recipients and activity for your business in one place.</p></div><button className="button button-primary" onClick={() => setPage('Send money')}><Icon name="plus" size={17}/> New payment</button></div>
+    <div className="business-demo-note"><span><Icon name="shield" size={17}/></span><div><strong>Prototype workspace</strong><small>Figures, approvals and payment activity shown here are sample data. No payments are sent.</small></div></div>
+    <div className="stat-grid business-stat-grid"><StatCard label="Monthly transfer limit" value="₦25,000,000" note="Illustrative account limit" icon="card" tag="DEMO"/><StatCard label="Sent this month" value="₦4,280,000" note="Across 18 payments" icon="send"/><StatCard label="Needs approval" value={String(requests.filter(item => !approved.includes(item.id)).length)} note="Payments awaiting review" icon="clock" tag="REVIEW"/><StatCard label="Team members" value="4 members" note="Owner and 3 team members" icon="users"/></div>
+    <section className="content-section dashboard-quick-section"><div className="section-heading"><div><h2>Business actions</h2><p>Common tasks for your team.</p></div></div><div className="quick-grid"><QuickAction icon="send" title="New payment" note="Send to a business recipient" onClick={() => setPage('Send money')}/><QuickAction icon="users" title="Recipients" note="Manage saved payees" onClick={() => setPage('Recipients')}/><QuickAction icon="clock" title="Payment history" note="Review business transfers" onClick={() => setPage('Transactions')}/><QuickAction icon="search" title="Track a payment" note="Follow a transfer" onClick={() => setPage('Track transaction')}/></div></section>
+    <section className="content-section business-approvals"><div className="section-heading"><div><h2>Payment approvals</h2><p>Review outgoing payments before they are released.</p></div><span className="approval-count">{requests.filter(item => !approved.includes(item.id)).length} to review</span></div><div className="approval-list">{requests.map(item => <article className="approval-row" key={item.id}><span className="approval-avatar"><Icon name="building" size={18}/></span><div className="approval-payee"><strong>{item.payee}</strong><small>{item.detail} · Ref {item.id}</small></div><strong className="approval-amount">{item.amount}</strong>{approved.includes(item.id) ? <span className="approval-done"><Icon name="checkCircle" size={16}/> Approved in demo</span> : <button className="button button-secondary button-small" onClick={() => approve(item.id)}>Approve demo</button>}</article>)}</div><p className="prototype-caption">Approval actions update this local demo only. Team roles and payment release require backend support.</p></section>
+    <section className="content-section activity-section"><div className="section-heading"><div><h2>Recent business payments</h2><p>Latest payment activity for this demo account.</p></div><button className="link-button" onClick={() => setPage('Transactions')}>View all <span>→</span></button></div><TransferTable transfers={transfers.slice(0,3)} onSelect={onSelectTransfer}/></section>
   </>
 }
 function TransferCalculator({ onSend }: { onSend: () => void }) {
@@ -252,22 +296,23 @@ function TransactionDetails({ transfer, onClose }: { transfer: Transfer; onClose
 
 function Track({ transfers }: { transfers: Transfer[] }) { const [reference,setReference]=useState('');const [result,setResult]=useState<Transfer|null|undefined>(undefined);const [error,setError]=useState('');const lookup=(event:React.FormEvent)=>{event.preventDefault();setError('');const found=transfers.find(item=>item.id.toLowerCase()===reference.trim().toLowerCase());setResult(found||null);if(!reference.trim())setError('Enter a transfer reference to search.')} 
   return <><PageHeading eyebrow="FOLLOW YOUR MONEY" title="Track a transfer" subtitle="Enter the reference from your receipt to see the latest update."/><section className="track-panel"><div className="track-icon"><Icon name="search" size={22}/></div><h2>Where is your transfer?</h2><p>Your reference number is in your transfer confirmation.</p><form className="track-form" onSubmit={lookup}><label htmlFor="reference">TRANSFER REFERENCE</label><div><input id="reference" value={reference} onChange={e=>setReference(e.target.value)} placeholder="e.g. ST-240918"/><button className="button button-primary" type="submit">Track transfer <span>→</span></button></div>{error&&<small className="field-error">{error}</small>}</form><div className="track-example"><span>Try a demo reference</span>{transfers.slice(0,3).map(item=><button key={item.id} onClick={()=>{setReference(item.id);setResult(item);setError('')}}>{item.id}</button>)}</div></section>{result&&result!==null&&<section className="track-result"><div className="track-result-head"><span className={`status status-${result.status.toLowerCase()}`}><i/>{result.status}</span><span>Reference <code>{result.id}</code></span></div><h2>Your transfer to {result.name} is {result.status.toLowerCase()}.</h2><p>{result.amount} {result.currency} · {result.country} · {result.date}</p><div className="timeline"><div className="timeline-item complete"><span><Icon name="check" size={13}/></span><div><strong>Transfer created</strong><small>Your transfer request has been received.</small></div></div><div className={`timeline-item ${result.status==='Completed'?'complete':'current'}`}><span>{result.status==='Completed'?<Icon name="check" size={13}/>:<i/>}</span><div><strong>{result.status==='Completed'?'Transfer completed':'Processing your transfer'}</strong><small>{result.status==='Completed'?'The recipient’s transfer is marked as complete in this demo.':'This is a simulated status. No payment provider is connected.'}</small></div></div><div className="timeline-item"><span><i/></span><div><strong>Recipient receives funds</strong><small>Final delivery depends on provider availability.</small></div></div></div></section>}{result===null&&<div className="notice error-notice track-not-found">No demo transfer found with that reference. Check the number and try again.</div>}</> }
-function Profile({ name, setName, onLogout }: { name: string; setName: (name: string)=>void; onLogout: ()=>void }) {
+function Profile({ name, setName, onLogout, accountType }: { name: string; setName: (name: string)=>void; onLogout: ()=>void; accountType: AccountType }) {
+  const isBusiness = accountType === 'business'
   const [draft,setDraft]=useState(name)
-  const [email,setEmail]=useState(()=>localStorage.getItem('settle-demo-email')||'chima.angwe@example.com')
-  const [phone,setPhone]=useState(()=>localStorage.getItem('settle-demo-phone')||'801 234 5678')
+  const [email,setEmail]=useState(()=>localStorage.getItem(isBusiness ? 'settle-demo-business-email' : 'settle-demo-email')||(isBusiness?'accounts@chimaventures.example':'chima.angwe@example.com'))
+  const [phone,setPhone]=useState(()=>localStorage.getItem(isBusiness ? 'settle-demo-business-phone' : 'settle-demo-phone')||'801 234 5678')
   const [notice,setNotice]=useState('')
   const [tab,setTab]=useState('Profile')
-  const save=(event:React.FormEvent)=>{event.preventDefault();const cleanName=draft.trim();if(!cleanName){setNotice('Enter your full name before saving.');return}setDraft(cleanName);setName(cleanName);localStorage.setItem('settle-demo-name',cleanName);localStorage.setItem('settle-demo-email',email.trim());localStorage.setItem('settle-demo-phone',phone.trim());setNotice('Your profile was updated in this prototype.');setTimeout(()=>setNotice(''),3000)}
+  const save=(event:React.FormEvent)=>{event.preventDefault();const cleanName=draft.trim();if(!cleanName){setNotice(isBusiness?'Enter your business name before saving.':'Enter your full name before saving.');return}setDraft(cleanName);setName(cleanName);localStorage.setItem(isBusiness?'settle-demo-business-name':'settle-demo-name',cleanName);localStorage.setItem(isBusiness?'settle-demo-business-email':'settle-demo-email',email.trim());localStorage.setItem(isBusiness?'settle-demo-business-phone':'settle-demo-phone',phone.trim());setNotice('Your profile was updated in this prototype.');setTimeout(()=>setNotice(''),3000)}
   const tabs=['Profile','Security','Notifications','Help & support']
-  return <><PageHeading eyebrow="YOUR ACCOUNT" title="Profile & settings" subtitle="Manage your personal details and account preferences."/>{notice&&<div className="notice success-notice"><Icon name="check" size={16}/>{notice}</div>}
+  return <><PageHeading eyebrow={isBusiness?'BUSINESS ACCOUNT':'YOUR ACCOUNT'} title={isBusiness?'Business profile':'Profile & settings'} subtitle={isBusiness?'Manage your company details and account preferences.':'Manage your personal details and account preferences.'}/>{notice&&<div className="notice success-notice"><Icon name="check" size={16}/>{notice}</div>}
     <div className="profile-v2">
       <nav className="profile-tabs" aria-label="Profile settings">{tabs.map(item=><button key={item} className={tab===item?'selected':''} onClick={()=>setTab(item)}><Icon name={item==='Profile'?'user':item==='Security'?'shield':item==='Notifications'?'bell':'search'} size={17}/>{item}</button>)}<button className="profile-tab-signout" onClick={onLogout}><Icon name="logout" size={17}/>Sign out</button></nav>
       {tab==='Profile'?<div className="profile-overview">
-        <section className="profile-hero"><span className="avatar avatar-light profile-hero-avatar">{name.split(' ').map(part=>part[0]).slice(0,2).join('').toUpperCase()}</span><div className="profile-hero-copy"><h2>{name}</h2><span className="profile-tier"><Icon name="shield" size={14}/> Individual account · Demo</span></div><span className="profile-hero-mark">SETTLE AFRICA</span></section>
-        <section className="profile-summary-card"><h2>Account summary</h2><div className="profile-summary-grid"><div><span>Account reference</span><strong>SET-0001 <small>DEMO</small></strong></div><div><span>Account type</span><strong>Individual</strong></div></div></section>
-        <section className="profile-kyc-panel"><div className="profile-section-heading"><h2>KYC &amp; compliance</h2><button onClick={()=>setNotice('KYC verification will be connected in a later milestone.')}>View verification <span>›</span></button></div><div className="profile-kyc-status"><span className="profile-kyc-icon"><Icon name="shield" size={20}/></span><div><strong>Identity verification</strong><p>Complete verification to unlock higher transfer limits and account features.</p></div><span className="verification-badge warning-badge">NOT VERIFIED</span><button className="button button-primary button-small" onClick={()=>setNotice('Identity verification will be connected in a later milestone.')}>Start verification</button></div></section>
-        <section className="profile-personal-card"><div className="profile-section-heading"><div><h2>Personal details</h2><p>Keep your contact details up to date.</p></div></div><form className="profile-details-form" onSubmit={save}><label className="profile-detail-row"><span>Full name</span><input required value={draft} onChange={e=>setDraft(e.target.value)}/></label><label className="profile-detail-row"><span>Email address</span><input required type="email" value={email} onChange={e=>setEmail(e.target.value)}/></label><label className="profile-detail-row"><span>Phone number</span><input required value={phone} onChange={e=>setPhone(e.target.value)}/></label><div className="profile-detail-row"><span>Location</span><strong>Nigeria</strong></div><button className="button button-primary" type="submit">Save changes <span>→</span></button></form></section>
+        <section className="profile-hero"><span className="avatar avatar-light profile-hero-avatar">{isBusiness?<Icon name="building" size={28}/>:name.split(' ').map(part=>part[0]).slice(0,2).join('').toUpperCase()}</span><div className="profile-hero-copy"><h2>{name}</h2><span className="profile-tier"><Icon name="shield" size={14}/> {isBusiness?'Business account · Demo':'Individual account · Demo'}</span></div><span className="profile-hero-mark">SETTLE AFRICA</span></section>
+        <section className="profile-summary-card"><h2>{isBusiness?'Business account summary':'Account summary'}</h2><div className="profile-summary-grid"><div><span>Account reference</span><strong>{isBusiness?'BIZ-0001':'SET-0001'} <small>DEMO</small></strong></div><div><span>Account type</span><strong>{isBusiness?'Business':'Individual'}</strong></div>{isBusiness&&<div><span>Business category</span><strong>Small business <small>DEMO</small></strong></div>}{isBusiness&&<div><span>Registration status</span><strong>Details needed</strong></div>}</div></section>
+        <section className="profile-kyc-panel"><div className="profile-section-heading"><h2>{isBusiness?'Business verification':'KYC & compliance'}</h2><button onClick={()=>setNotice(`${isBusiness?'Business':'Identity'} verification will be connected in a later milestone.`)}>View verification <span>›</span></button></div><div className="profile-kyc-status"><span className="profile-kyc-icon"><Icon name="shield" size={20}/></span><div><strong>{isBusiness?'Company verification':'Identity verification'}</strong><p>{isBusiness?'Business verification requirements will depend on the supported markets and service providers.':'Complete verification to unlock higher transfer limits and account features.'}</p></div><span className="verification-badge warning-badge">NOT VERIFIED</span><button className="button button-primary button-small" onClick={()=>setNotice(`${isBusiness?'Business':'Identity'} verification will be connected in a later milestone.`)}>Start verification</button></div></section>
+        <section className="profile-personal-card"><div className="profile-section-heading"><div><h2>{isBusiness?'Business details':'Personal details'}</h2><p>{isBusiness?'Add the basic information for this demo company profile.':'Keep your contact details up to date.'}</p></div></div><form className="profile-details-form" onSubmit={save}><label className="profile-detail-row"><span>{isBusiness?'Business name':'Full name'}</span><input required value={draft} onChange={e=>setDraft(e.target.value)}/></label><label className="profile-detail-row"><span>{isBusiness?'Business email':'Email address'}</span><input required type="email" value={email} onChange={e=>setEmail(e.target.value)}/></label><label className="profile-detail-row"><span>{isBusiness?'Business phone':'Phone number'}</span><input required value={phone} onChange={e=>setPhone(e.target.value)}/></label><div className="profile-detail-row"><span>Country</span><strong>Nigeria</strong></div><button className="button button-primary" type="submit">Save changes <span>→</span></button></form></section>
       </div>:<section className="profile-secondary-panel">{tab==='Security'?<SecuritySettings onSaved={setNotice}/>:tab==='Notifications'?<NotificationSettings/>:<HelpSupport onNotice={setNotice}/>}</section>}
     </div>
   </>
