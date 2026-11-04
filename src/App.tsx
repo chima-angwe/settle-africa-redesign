@@ -1353,6 +1353,7 @@ function AuthScreen({
 }) {
   const [fullName, setFullName] = useState("");
   const [businessName, setBusinessName] = useState("");
+  const [businessRegistrationNumber, setBusinessRegistrationNumber] = useState("");
   const [country, setCountry] = useState(initialCountry);
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -1384,6 +1385,10 @@ function AuthScreen({
     if (mode === "signup" && stage === 1) {
       if (accountType === "business" && !businessName.trim()) {
         setError("Enter your business name to continue.");
+        return;
+      }
+      if (accountType === "business" && !businessRegistrationNumber.trim()) {
+        setError("Enter your company registration number to continue.");
         return;
       }
       if (!fullName.trim() || !email.trim() || !phone.trim() || !country) {
@@ -1642,6 +1647,18 @@ function AuthScreen({
                     />
                   </label>
                 )}
+                {accountType === "business" && (
+                  <label>
+                    Company registration number
+                    <input
+                      required
+                      value={businessRegistrationNumber}
+                      onChange={(e) => setBusinessRegistrationNumber(e.target.value)}
+                      placeholder="e.g. RC 1234567"
+                      autoComplete="off"
+                    />
+                  </label>
+                )}
                 <label>
                   {accountType === "business" ? "Your full name" : "Full name"}
                   <input
@@ -1663,26 +1680,25 @@ function AuthScreen({
                     autoComplete="email"
                   />
                 </label>
-                <label>
-                  Phone number
-                  <input
-                    required
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+234 801 234 5678"
-                    autoComplete="tel"
-                  />
-                  <small className="auth-field-hint">
-                    Include your country code so we can verify this number.
-                  </small>
-                </label>
-                <div className="country-field">
-                  <span>Country</span>
-                  <CountrySelect value={country} onChange={setCountry} />
-                  <small className="auth-field-hint">
-                    Used as your default country when you start a transfer.
-                  </small>
+                <div className="auth-phone-country-field">
+                  <label className="auth-phone-label">Phone number</label>
+                  <div className="auth-phone-country-control">
+                    <div className="auth-phone-country-select">
+                      <CountrySelect value={country} onChange={setCountry} />
+                    </div>
+                    <div className="auth-phone-input-wrap">
+                      <span>{callingCodes[country] || "+"}</span>
+                      <input
+                        required
+                        type="tel"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value.replace(/[^0-9 ]/g, ""))}
+                        placeholder="801 234 5678"
+                        autoComplete="tel-national"
+                      />
+                    </div>
+                  </div>
+                  <small className="auth-field-hint">Your country will be the default for transfers.</small>
                 </div>
               </>
             )}
