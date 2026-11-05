@@ -896,6 +896,18 @@ a { color: inherit; }
 .profile-detail-row > strong { color: var(--ink); font-size: 14px; font-weight: 500; text-align: right; }
 .profile-details-form > .button { justify-self: start; margin-top: 17px; }
 .profile-secondary-panel { min-width: 0; }
+.linked-banks-content { display: grid; gap: 18px; }
+.bank-link-demo-note,.linked-bank-card { display: flex; align-items: center; gap: 13px; padding: 15px 17px; border: 1px solid var(--line); border-radius: 16px; background: var(--soft); }
+.bank-link-demo-note > svg { flex: 0 0 auto; }
+.bank-link-demo-note > span,.linked-bank-card > div { display: grid; gap: 4px; }
+.bank-link-demo-note strong,.linked-bank-card strong { color: var(--ink); font-size: 14px; }
+.bank-link-demo-note small,.linked-bank-card small { color: var(--muted); font-size: 12px; }
+.linked-bank-list { display: grid; gap: 9px; }
+.linked-bank-card { background: var(--paper); }
+.linked-bank-icon { display: grid; width: 40px; height: 40px; flex: 0 0 40px; place-items: center; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); }
+.linked-bank-card > div { flex: 1; }
+.bank-link-form { max-width: 520px; }
+.bank-link-form select,.bank-link-form input { min-height: 46px; padding: 0 13px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); color: var(--ink); }
 @media (max-width: 650px) {
   .profile-v2 { gap: 13px; }
   .profile-tabs { gap: 4px; padding: 5px; }
