@@ -8,6 +8,7 @@ type Page =
   | "Transactions"
   | "Track transaction"
   | "Recipients"
+  | "Linked banks"
   | "Profile";
 type AccountType = "individual" | "business";
 type Recipient = {
@@ -1075,6 +1076,13 @@ function App() {
         <div className="sidebar-bottom">
           <div className="nav-caption">ACCOUNT</div>
           <button
+            className={`nav-item ${page === "Linked banks" ? "active" : ""}`}
+            onClick={() => { setPage("Linked banks"); setMobileNav(false); }}
+          >
+            <Icon name="card" />
+            <span>Linked banks</span>
+          </button>
+          <button
             className={`nav-item ${page === "Profile" ? "active" : ""}`}
             onClick={() => {
               setPage("Profile");
@@ -1300,6 +1308,12 @@ function App() {
               }
               onLogout={handleLogout}
               accountType={accountType}
+            />
+          )}
+          {page === "Linked banks" && (
+            <LinkedBanks
+              country={localStorage.getItem(`settle-demo-${accountType}-country`) || "Nigeria"}
+              onNotice={() => {}}
             />
           )}
         </div>
@@ -5202,7 +5216,7 @@ function Profile({
     setNotice("Your profile was updated in this prototype.");
     setTimeout(() => setNotice(""), 3000);
   };
-  const tabs = ["Profile", "Linked banks", "Security", "Notifications", "Help & support"];
+  const tabs = ["Profile", "Security", "Notifications", "Help & support"];
   return (
     <>
       <PageHeading
@@ -5368,9 +5382,7 @@ function Profile({
           </div>
         ) : (
           <section className="profile-secondary-panel">
-            {tab === "Linked banks" ? (
-              <LinkedBanks country={profileCountry} onNotice={setNotice} />
-            ) : tab === "Security" ? (
+            {tab === "Security" ? (
               <SecuritySettings onSaved={setNotice} />
             ) : tab === "Notifications" ? (
               <NotificationSettings />
@@ -5390,9 +5402,7 @@ function Profile({
                 name={
                   item === "Profile"
                     ? "user"
-                    : item === "Linked banks"
-                      ? "card"
-                      : item === "Security"
+                    : item === "Security"
                       ? "shield"
                       : item === "Notifications"
                         ? "bell"
