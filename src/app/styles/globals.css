@@ -1,51 +1,107 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
 
-:root {
-  font-family: 'DM Sans', sans-serif;
-  color: #101010;
-  background: #f5f5f3;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  --ink: #101010;
-  --muted: #717171;
-  --subtle: #9c9c9a;
-  --line: #e3e3e0;
-  --paper: #fff;
-  --canvas: #f5f5f3;
-  --soft: #f1f1ef;
-  --inverse: #101010;
-  --inverse-text: #fff;
-  --shadow: 0 18px 55px #0000000b;
-  font-size: 14px;
+@theme {
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-line: var(--line);
+  --color-paper: var(--paper);
+  --color-canvas: var(--canvas);
+  --color-soft: var(--soft);
+  --color-inverse: var(--inverse);
+  --color-inverse-text: var(--inverse-text);
+
+  --font-sans: 'DM Sans', sans-serif;
+  --font-heading: 'Manrope', 'DM Sans', sans-serif;
+
+  --shadow-subtle: 0 18px 55px #0000000b;
+  --shadow-subtle-dark: 0 18px 55px #00000030;
+  --shadow-drawer: -14px 0 45px #0002;
 }
 
-html[data-theme='dark'] {
-  color-scheme: dark;
-  --ink: #f2f2f0;
-  --muted: #aaa9a6;
-  --subtle: #777774;
-  --line: #333331;
-  --paper: #1b1b1a;
-  --canvas: #111110;
-  --soft: #242423;
-  --inverse: #f2f2f0;
-  --inverse-text: #111110;
-  --shadow: 0 18px 55px #00000030;
-  background: var(--canvas);
-}
-html[data-theme='dark'] .site-header .brand-symbol img,
-html[data-theme='dark'] .welcome-banner .brand-symbol img,
-html[data-theme='dark'] .auth-page .brand-symbol img { filter: invert(1); }
+@layer base {
+  :root {
+    font-family: 'DM Sans', sans-serif;
+    color: #101010;
+    background: #f5f5f3;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    --ink: #101010;
+    --muted: #717171;
+    --subtle: #9c9c9a;
+    --line: #e3e3e0;
+    --paper: #fff;
+    --canvas: #f5f5f3;
+    --soft: #f1f1ef;
+    --inverse: #101010;
+    --inverse-text: #fff;
+    --shadow: 0 18px 55px #0000000b;
+    font-size: 14px;
+  }
 
-* { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--canvas); color: var(--ink); }
-button, input, select, textarea { font: inherit; }
-button { cursor: pointer; }
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
-a { color: inherit; }
-::selection { background: var(--ink); color: var(--inverse-text); }
-#root { min-height: 100vh; filter: none !important; }
+  html[data-theme='dark'] {
+    color-scheme: dark;
+    --ink: #f2f2f0;
+    --muted: #aaa9a6;
+    --subtle: #777774;
+    --line: #333331;
+    --paper: #1b1b1a;
+    --canvas: #111110;
+    --soft: #242423;
+    --inverse: #f2f2f0;
+    --inverse-text: #111110;
+    --shadow: 0 18px 55px #00000030;
+    background: var(--canvas);
+  }
+
+  html[data-theme='dark'] .brand-symbol img,
+  html[data-theme='dark'] .site-header .brand-symbol img,
+  html[data-theme='dark'] .welcome-banner .brand-symbol img,
+  html[data-theme='dark'] .auth-page .brand-symbol img {
+    filter: invert(1);
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    min-width: 320px;
+    min-height: 100vh;
+    background: var(--canvas);
+    color: var(--ink);
+  }
+
+  button, input, select, textarea {
+    font: inherit;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 3px;
+  }
+
+  a {
+    color: inherit;
+  }
+
+  ::selection {
+    background: var(--ink);
+    color: var(--inverse-text);
+  }
+
+  #root {
+    min-height: 100vh;
+    filter: none !important;
+  }
+}
 
 /* Workspace shell */
 .portal { min-height: 100vh; display: block; background: var(--canvas); color: var(--ink); }
