@@ -1,4 +1,4 @@
-export type TransferStatus = "Pending" | "Completed" | "Processing";
+export type TransferStatus = "Pending" | "Completed" | "Processing" | "Failed";
 
 export interface Transfer {
   id: string;

@@ -13,6 +13,8 @@ export interface TopbarProps {
   name: string;
   businessName: string;
   onSwitchAccount: (type: AccountType) => void;
+  onOpenNotifications?: () => void;
+  hasNotificationDot?: boolean;
 }
 
 export function Topbar({
@@ -24,6 +26,8 @@ export function Topbar({
   name,
   businessName,
   onSwitchAccount,
+  onOpenNotifications,
+  hasNotificationDot = false,
 }: TopbarProps) {
   return (
     <header className="topbar sticky top-0 z-20 flex min-h-[70px] items-center justify-between px-4 sm:px-8 border-b border-line bg-paper">
@@ -39,11 +43,14 @@ export function Topbar({
         <ThemeToggle theme={theme} onToggle={onToggleTheme} />
         <button
           type="button"
-          className="icon-button notification relative inline-grid w-[34px] h-[34px] place-items-center border border-transparent hover:border-line rounded-full bg-transparent hover:bg-soft text-ink transition-colors"
+          onClick={onOpenNotifications}
+          className="icon-button notification relative inline-grid w-[34px] h-[34px] place-items-center border border-transparent hover:border-line rounded-full bg-transparent hover:bg-soft text-ink transition-colors cursor-pointer"
           aria-label="Notifications"
         >
           <Icon name="bell" />
-          <i className="absolute top-[7px] right-[7px] w-[5px] h-[5px] rounded-full bg-ink" />
+          {hasNotificationDot && (
+            <i className="absolute top-[7px] right-[7px] w-[5px] h-[5px] rounded-full bg-ink" />
+          )}
         </button>
         <div className="topbar-divider hidden sm:block h-6 border-l border-line" />
         <AccountSwitcher
@@ -56,4 +63,3 @@ export function Topbar({
     </header>
   );
 }
-

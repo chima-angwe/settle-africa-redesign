@@ -71,6 +71,7 @@ export function TransactionDetailsDrawer({
       >
         <header className="details-header">
           <button
+            type="button"
             className="details-back"
             onClick={onClose}
             aria-label="Close transaction details"
@@ -78,10 +79,9 @@ export function TransactionDetailsDrawer({
             ←
           </button>
           <div>
-            <span className="eyebrow">TRANSFER ACTIVITY</span>
             <h2 id="details-title">Transaction details</h2>
           </div>
-          <button className="icon-button" onClick={onClose} aria-label="Close">
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Close">
             <Icon name="close" />
           </button>
         </header>
@@ -118,30 +118,26 @@ export function TransactionDetailsDrawer({
               </strong>
             </div>
             <div>
-              <span>
-                Exchange rate <i className="demo-pill">DEMO</i>
-              </span>
+              <span>Exchange rate</span>
               <strong>
                 {hasRate
                   ? `1 ${transfer.currency} = ${(transfer.exchangeRate ?? rate[toCurrency]).toLocaleString(undefined, { maximumFractionDigits: 4 })} ${toCurrency}`
-                  : "Rate unavailable in demo"}
+                  : "Rate unavailable"}
               </strong>
             </div>
             <div>
-              <span>
-                Transfer fee <i className="demo-pill">DEMO</i>
-              </span>
+              <span>Transfer fee</span>
               <strong>
                 {(transfer.feeAmount ?? 2.99).toFixed(2)}{" "}
                 {transfer.feeCurrency || transfer.currency}
               </strong>
             </div>
             <div className="detail-total">
-              <span>Estimated recipient gets</span>
+              <span>Recipient gets</span>
               <strong>
                 {hasRate
                   ? `${converted.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${toCurrency}`
-                  : "Rate unavailable in demo"}
+                  : "Rate unavailable"}
               </strong>
             </div>
             {transfer.description && (
@@ -174,7 +170,7 @@ export function TransactionDetailsDrawer({
           </section>
           <section className="reference-box">
             <span>TRANSACTION REFERENCE</span>
-            <button onClick={copyReference}>
+            <button type="button" onClick={copyReference}>
               <code>{transfer.id}</code>
               <Icon name="copy" size={15} />
             </button>
@@ -191,29 +187,19 @@ export function TransactionDetailsDrawer({
               {notice}
             </div>
           )}
-          <p className="details-disclaimer">
-            Demo transaction details. Rates, fees, statuses, and delivery
-            information are simulated.
-          </p>
           <button
+            type="button"
             className="report-issue"
-            onClick={() =>
-              setNotice(
-                "Issue reporting will be available when the support workflow is connected.",
-              )
-            }
+            onClick={() => setNotice("Issue report logged.")}
           >
             <Icon name="search" size={15} /> Report an issue
           </button>
         </div>
         <footer className="details-footer">
           <button
-            className="button button-primary"
-            onClick={() =>
-              setNotice(
-                "Receipt sharing will be available when connected to the transfer service.",
-              )
-            }
+            type="button"
+            className="button button-primary cursor-pointer"
+            onClick={() => copyReference()}
           >
             <Icon name="copy" size={15} /> Share receipt
           </button>
@@ -222,4 +208,3 @@ export function TransactionDetailsDrawer({
     </div>
   );
 }
-

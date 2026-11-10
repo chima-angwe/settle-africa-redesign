@@ -288,7 +288,8 @@
 
 /* Version 2 workspace navigation: keep product links in the left rail. */
 .portal { display: flex; align-items: stretch; }
-.sidebar { position: fixed !important; inset: 0 auto 0 0 !important; z-index: 20; display: flex; width: 244px !important; height: 100vh !important; height: 100dvh !important; flex: 0 0 244px; flex-direction: column; align-items: stretch; gap: 0; overflow-y: auto; padding: 26px 17px 16px; border: 0; background: #101010; color: #fff; }
+.sidebar { position: fixed !important; inset: 0 auto 0 0 !important; z-index: 20; display: flex; width: 244px !important; height: 100vh !important; height: 100dvh !important; flex: 0 0 244px; flex-direction: column; align-items: stretch; gap: 0; overflow-y: auto; padding: 26px 17px 16px; border: 0; background: #101010; color: #fff; scrollbar-width: none; -ms-overflow-style: none; }
+.sidebar::-webkit-scrollbar { display: none; }
 .sidebar .brand { min-height: 62px; flex: 0 0 auto; gap: 12px; padding: 9px 12px; border: 0; border-radius: 14px; background: #fff; color: #101010; }
 .sidebar .brand-symbol { width: 40px !important; height: 40px !important; flex-basis: 40px; }
 .sidebar .brand-symbol img { filter: none; }
@@ -1299,4 +1300,50 @@ input,select,textarea { border-radius: 13px; }
   .send-review-hero > span { justify-self: start; }
   .send-review-section dl > div { align-items: flex-start; padding: 10px 0; }
   .send-review-section dd { max-width: 58%; flex-wrap: wrap; justify-content: flex-end; }
+}
+
+
+/* ========================================================= */
+/* Custom Select Chevron Styling (Spaced from Right Wall)    */
+/* ========================================================= */
+select {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23737373' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 14px center !important;
+  background-size: 13px 13px !important;
+  padding-right: 40px !important;
+  cursor: pointer;
+}
+
+[data-theme='dark'] select,
+.dark select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23a3a3a3' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") !important;
+}
+
+.table-pagination select {
+  padding-right: 22px !important;
+  background-position: right 6px center !important;
+  background-size: 10px 10px !important;
+}
+
+.send-currency-select select {
+  padding-right: 18px !important;
+  background-position: right 3px center !important;
+  background-size: 10px 10px !important;
+}
+
+.currency-choice select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") !important;
+  background-position: right 8px center !important;
+  background-size: 11px 11px !important;
+  padding-right: 26px !important;
+}
+
+.send-currency-inline {
+  padding-right: 22px !important;
+  background-position: right 2px center !important;
+  background-size: 11px 11px !important;
 }

@@ -105,6 +105,14 @@ export function Icon({ name, size = 19, className }: IconProps) {
         <circle cx="12" cy="12" r="3" />
       </>
     ),
+    eyeOff: (
+      <>
+        <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+        <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+        <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+        <line x1="2" x2="22" y1="2" y2="22" />
+      </>
+    ),
     logout: (
       <>
         <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -122,6 +130,13 @@ export function Icon({ name, size = 19, className }: IconProps) {
       <>
         <rect x="2" y="4" width="20" height="16" rx="2" />
         <path d="M2 10h20" />
+      </>
+    ),
+    wallet: (
+      <>
+        <path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1" />
+        <path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4" />
+        <circle cx="18" cy="14" r="1" fill="currentColor" />
       </>
     ),
     sun: (
@@ -154,8 +169,24 @@ export function Icon({ name, size = 19, className }: IconProps) {
         <path d="m17 8-5-5-5 5M12 3v12" />
       </>
     ),
+    inbox: (
+      <>
+        <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+        <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z" />
+      </>
+    ),
+    calendar: (
+      <>
+        <rect x="3" y="4" width="18" height="18" rx="2" />
+        <path d="M16 2v4M8 2v4M3 10h18" />
+      </>
+    ),
+    edit: (
+      <>
+        <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+      </>
+    ),
   };
 
   return <svg {...common}>{paths[name] ?? paths.grid}</svg>;
 }
-

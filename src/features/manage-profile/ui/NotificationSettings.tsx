@@ -8,22 +8,10 @@ export function NotificationSettings() {
         '{"transferUpdates":true,"securityAlerts":true,"productNews":false}',
     ),
   );
-  const options: [keyof typeof settings, string, string][] = [
-    [
-      "transferUpdates",
-      "Transfer updates",
-      "Get updates when a transfer status changes.",
-    ],
-    [
-      "securityAlerts",
-      "Security alerts",
-      "Know when important account activity happens.",
-    ],
-    [
-      "productNews",
-      "Product news",
-      "Hear about new features and service updates.",
-    ],
+  const options: [keyof typeof settings, string][] = [
+    ["transferUpdates", "Transfer updates"],
+    ["securityAlerts", "Security alerts"],
+    ["productNews", "Product news"],
   ];
   const toggle = (key: keyof typeof settings) =>
     setSettings((current) => {
@@ -35,9 +23,8 @@ export function NotificationSettings() {
     <div className="settings-content">
       <div className="settings-section-title">
         <h3>Notification preferences</h3>
-        <p>These preferences are saved on this device for the prototype.</p>
       </div>
-      {options.map(([key, title, description]) => (
+      {options.map(([key, title]) => (
         <div className="setting-card" key={key}>
           <div className="setting-copy">
             <span className="setting-icon">
@@ -45,10 +32,10 @@ export function NotificationSettings() {
             </span>
             <div>
               <strong>{title}</strong>
-              <p>{description}</p>
             </div>
           </div>
           <button
+            type="button"
             className={`toggle ${settings[key] ? "on" : ""}`}
             role="switch"
             aria-checked={settings[key]}
@@ -62,4 +49,3 @@ export function NotificationSettings() {
     </div>
   );
 }
-
