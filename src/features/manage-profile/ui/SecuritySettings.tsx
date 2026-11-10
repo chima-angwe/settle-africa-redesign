@@ -22,25 +22,23 @@ export function SecuritySettings({ onSaved }: { onSaved: (notice: string) => voi
       return;
     }
     if (next.length < 8) {
-      setError("Use at least 8 characters for your new password.");
+      setError("Use at least 8 characters.");
       return;
     }
     if (next !== confirm) {
-      setError("The new passwords do not match.");
+      setError("Passwords do not match.");
       return;
     }
     setCurrent("");
     setNext("");
     setConfirm("");
-    onSaved("Password change saved for this prototype session only.");
+    onSaved("Password updated.");
   };
   const toggleTwoStep = () => {
     const value = !twoStep;
     setTwoStep(value);
     localStorage.setItem("settle-demo-two-step", String(value));
-    onSaved(
-      `Two-step verification ${value ? "enabled" : "disabled"} in this prototype.`,
-    );
+    onSaved(`Two-step verification ${value ? "enabled" : "disabled"}.`);
   };
   return (
     <div className="settings-content">
@@ -51,12 +49,10 @@ export function SecuritySettings({ onSaved }: { onSaved: (notice: string) => voi
           </span>
           <div>
             <strong>Two-step verification</strong>
-            <p>
-              Add another step when signing in to help protect your account.
-            </p>
           </div>
         </div>
         <button
+          type="button"
           className={`toggle ${twoStep ? "on" : ""}`}
           role="switch"
           aria-checked={twoStep}
@@ -69,7 +65,6 @@ export function SecuritySettings({ onSaved }: { onSaved: (notice: string) => voi
       <form className="settings-form" onSubmit={savePassword}>
         <div className="settings-section-title">
           <h3>Change password</h3>
-          <p>Choose a strong password you don’t use elsewhere.</p>
         </div>
         <label>
           Current password
@@ -99,14 +94,10 @@ export function SecuritySettings({ onSaved }: { onSaved: (notice: string) => voi
           />
         </label>
         {error && <div className="notice error-notice">{error}</div>}
-        <button className="button button-primary" type="submit">
+        <button className="button button-primary cursor-pointer" type="submit">
           Update password
         </button>
-        <p className="prototype-caption">
-          Password changes are not sent to a server in this prototype.
-        </p>
       </form>
     </div>
   );
 }
-

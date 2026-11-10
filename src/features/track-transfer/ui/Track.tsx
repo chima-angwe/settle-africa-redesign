@@ -18,17 +18,13 @@ export function Track({ transfers }: { transfers: Transfer[] }) {
       (item) => item.id.toLowerCase() === reference.trim().toLowerCase(),
     );
     setResult(found || null);
-    if (!reference.trim()) setError("Enter a transfer reference to search.");
+    if (!reference.trim()) setError("Enter a transfer reference.");
   };
   const completed = result?.status === "Completed";
   const processing = result?.status === "Processing";
   return (
     <>
-      <PageHeading
-        eyebrow="TRANSFER STATUS"
-        title="Track a transfer"
-        subtitle="Enter a payment reference."
-      />
+      <PageHeading title="Track a transfer" />
       <section className="track-panel">
         <div className="track-icon">
           <Icon name="search" size={22} />
@@ -42,14 +38,14 @@ export function Track({ transfers }: { transfers: Transfer[] }) {
               onChange={(e) => setReference(e.target.value)}
               placeholder="e.g. ST-240918"
             />
-            <button className="button button-primary" type="submit">
+            <button className="button button-primary cursor-pointer" type="submit">
               Track transfer <span>→</span>
             </button>
           </div>
           {error && <small className="field-error">{error}</small>}
         </form>
         <div className="track-example">
-          <span>Demo references</span>
+          <span>References</span>
           {transfers.slice(0, 3).map((item) => (
             <button
               key={item.id}
@@ -72,7 +68,7 @@ export function Track({ transfers }: { transfers: Transfer[] }) {
               {result.status}
             </span>
             <span>
-              Reference <code>{result.id}</code>
+              <code>{result.id}</code>
             </span>
           </div>
           <h2>
@@ -88,7 +84,6 @@ export function Track({ transfers }: { transfers: Transfer[] }) {
               </span>
               <div>
                 <strong>Request received</strong>
-                <small>Reference created in this demo.</small>
               </div>
             </div>
             <div
@@ -103,24 +98,12 @@ export function Track({ transfers }: { transfers: Transfer[] }) {
                       ? "Transfer processing"
                       : "Awaiting processing"}
                 </strong>
-                <small>
-                  {completed
-                    ? "Marked complete in this demo."
-                    : processing
-                      ? "Status is simulated; no payment provider is connected."
-                      : "This demo request has not been sent to a payment provider."}
-                </small>
               </div>
             </div>
             <div className={`timeline-item ${completed ? "complete" : ""}`}>
               <span>{completed ? <Icon name="check" size={13} /> : <i />}</span>
               <div>
                 <strong>Recipient delivery</strong>
-                <small>
-                  {completed
-                    ? "Marked delivered in this demo."
-                    : "Delivery updates appear when a provider is connected."}
-                </small>
               </div>
             </div>
           </div>
@@ -128,10 +111,9 @@ export function Track({ transfers }: { transfers: Transfer[] }) {
       )}
       {result === null && (
         <div className="notice error-notice track-not-found">
-          No demo transfer found with that reference. Check the number and try
-          again.
+          No transfer found with that reference.
         </div>
       )}
     </>
   );
-}
+}

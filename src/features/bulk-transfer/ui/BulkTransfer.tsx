@@ -1,59 +1,181 @@
-import type React from 'react';
-import { useState } from 'react';
-import { Icon, PageHeading } from '@/shared/ui';
-import { parseCsvLine } from '@/shared/lib';
-import type { Transfer, BulkDraft } from '@/entities/transfer';
-import { countryCodes, countries, CountryBadge, CountrySelect } from '@/entities/country';
+import type React from "react";
+import { useState, useRef } from "react";
+import { Icon } from "@/shared/ui";
+import { parseCsvLine } from "@/shared/lib";
+import type { Transfer } from "@/entities/transfer";
+import { countries, CountryBadge } from "@/entities/country";
+import {
+  CORRIDOR_BANKS,
+  COUNTRY_TO_CURRENCY,
+  resolveInterbankAccountName,
+} from "@/features/send-money";
 
 export interface BulkTransferProps {
   setTransfers: React.Dispatch<React.SetStateAction<Transfer[]>>;
   onTrackTransfer: (transfer: Transfer) => void;
 }
 
+interface BulkRecipientRow {
+  key: string;
+  country: string;
+  accountNumber: string;
+  bank: string;
+  recipientName: string;
+  amount: string;
+  narration: string;
+  isLookingUp?: boolean;
+}
+
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  NGN: "₦",
+  KES: "KSh ",
+  GHS: "GH₵ ",
+  ZAR: "R ",
+  RWF: "FRw ",
+  UGX: "USh ",
+  EGP: "E£ ",
+  TZS: "TSh ",
+  XOF: "CFA ",
+  USD: "$",
+};
+
+function createEmptyRow(indexKey?: string): BulkRecipientRow {
+  return {
+    key: indexKey || `row-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+    country: "Nigeria",
+    accountNumber: "",
+    bank: "",
+    recipientName: "",
+    amount: "",
+    narration: "",
+    isLookingUp: false,
+  };
+}
+
 export function BulkTransfer({
   setTransfers,
   onTrackTransfer,
-}: {
-  setTransfers: React.Dispatch<React.SetStateAction<Transfer[]>>;
-  onTrackTransfer: (transfer: Transfer) => void;
-}) {
-  const [rows, setRows] = useState<BulkDraft[]>([]);
+}: BulkTransferProps) {
+  const [rows, setRows] = useState<BulkRecipientRow[]>(() => [
+    createEmptyRow("row-initial-1"),
+  ]);
   const [submitted, setSubmitted] = useState<Transfer[]>([]);
   const [batchId, setBatchId] = useState("");
   const [error, setError] = useState("");
-  const rowError = (row: BulkDraft) =>
-    !row.name.trim()
-      ? "Add a recipient name"
-      : !countryCodes[row.country]
-        ? "Choose a supported country"
-        : !row.account.trim()
-          ? "Add bank or wallet details"
-          : !Number.isFinite(Number(row.amount)) || Number(row.amount) <= 0
-            ? "Enter an amount above zero"
-            : "";
-  const validRows = rows.filter((row) => !rowError(row));
-  const total = validRows.reduce((sum, row) => sum + Number(row.amount), 0);
-  const update = (
-    key: string,
-    field: keyof Omit<BulkDraft, "key">,
-    value: string,
-  ) =>
-    setRows((current) =>
-      current.map((row) =>
-        row.key === key ? { ...row, [field]: value } : row,
-      ),
+  const [isDragging, setIsDragging] = useState(false);
+
+  const lookupTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const isRowVerified = (row: BulkRecipientRow) => {
+    const cleanDigits = row.accountNumber.replace(/\D/g, "");
+    return (
+      cleanDigits.length >= 8 &&
+      Boolean(row.bank.trim()) &&
+      Boolean(row.recipientName.trim())
     );
-  const addRow = (row: Partial<BulkDraft> = {}) =>
-    setRows((current) => [
-      ...current,
-      {
-        key: String(Date.now()) + Math.random(),
-        name: row.name || "",
-        country: row.country || "",
-        account: row.account || "",
-        amount: row.amount || "",
-      },
-    ]);
+  };
+
+  const isRowValid = (row: BulkRecipientRow) => {
+    const amt = Number(row.amount);
+    return isRowVerified(row) && Number.isFinite(amt) && amt > 0;
+  };
+
+  const verifiedCount = rows.filter(isRowVerified).length;
+  const validRows = rows.filter(isRowValid);
+
+  const primaryCurrency =
+    COUNTRY_TO_CURRENCY[rows[0]?.country || "Nigeria"] || "NGN";
+  const primarySymbol = CURRENCY_SYMBOLS[primaryCurrency] || "₦";
+
+  const totalAmount = rows.reduce((sum, row) => {
+    const val = Number(row.amount);
+    return sum + (Number.isFinite(val) && val > 0 ? val : 0);
+  }, 0);
+
+  const triggerNameLookup = (
+    key: string,
+    digits: string,
+    bankName: string,
+    country: string
+  ) => {
+    if (lookupTimersRef.current[key]) {
+      clearTimeout(lookupTimersRef.current[key]);
+    }
+
+    if (digits.length >= 8 && bankName) {
+      setRows((prev) =>
+        prev.map((r) => (r.key === key ? { ...r, isLookingUp: true } : r))
+      );
+      lookupTimersRef.current[key] = setTimeout(() => {
+        const resolved = resolveInterbankAccountName(digits, bankName, country);
+        setRows((prev) =>
+          prev.map((r) =>
+            r.key === key
+              ? { ...r, recipientName: resolved, isLookingUp: false }
+              : r
+          )
+        );
+      }, 300);
+    } else {
+      setRows((prev) =>
+        prev.map((r) =>
+          r.key === key
+            ? { ...r, recipientName: "", isLookingUp: false }
+            : r
+        )
+      );
+    }
+  };
+
+  const handleFieldChange = (
+    key: string,
+    field: keyof BulkRecipientRow,
+    value: string
+  ) => {
+    setError("");
+    setRows((current) =>
+      current.map((row) => {
+        if (row.key !== key) return row;
+
+        if (field === "accountNumber") {
+          const clean = value.replace(/\D/g, "").slice(0, 16);
+          const nextRow = { ...row, accountNumber: clean };
+          triggerNameLookup(key, clean, nextRow.bank, nextRow.country);
+          return nextRow;
+        }
+
+        if (field === "bank") {
+          const nextRow = { ...row, bank: value };
+          const digits = nextRow.accountNumber.replace(/\D/g, "");
+          triggerNameLookup(key, digits, value, nextRow.country);
+          return nextRow;
+        }
+
+        if (field === "country") {
+          const nextRow = {
+            ...row,
+            country: value,
+            bank: "",
+            recipientName: "",
+          };
+          return nextRow;
+        }
+
+        return { ...row, [field]: value };
+      })
+    );
+  };
+
+  const addRow = () => {
+    setRows((current) => [...current, createEmptyRow()]);
+  };
+
+  const removeRow = (key: string) => {
+    if (rows.length <= 1) return;
+    setRows((current) => current.filter((r) => r.key !== key));
+  };
+
   const importCsv = async (file?: File) => {
     if (!file) return;
     setError("");
@@ -61,100 +183,73 @@ export function BulkTransfer({
       const lines = (await file.text())
         .split(/\r?\n/)
         .filter((line) => line.trim());
-      if (lines.length < 2)
-        throw new Error("The CSV needs a header row and at least one payment.");
-      const headers = parseCsvLine(lines[0]).map((value) =>
-        value.toLowerCase(),
-      );
+      if (lines.length < 2) {
+        throw new Error("CSV needs a header row and at least one recipient.");
+      }
+
+      const headers = parseCsvLine(lines[0]).map((v) => v.toLowerCase().trim());
       const find = (...names: string[]) =>
-        headers.findIndex((header) => names.includes(header));
-      const nameIndex = find(
-        "recipient",
-        "recipient name",
-        "name",
-        "beneficiary",
-      );
-      const countryIndex = find("country", "destination country");
-      const accountIndex = find(
-        "account",
+        headers.findIndex((h) => names.includes(h));
+
+      const accIdx = find(
         "account number",
+        "account",
         "phone",
         "mobile number",
-        "bank or wallet",
+        "bank or wallet"
       );
-      const amountIndex = find("amount", "amount usd", "usd amount");
-      if (
-        [nameIndex, countryIndex, accountIndex, amountIndex].some(
-          (index) => index < 0,
-        )
-      )
+      const bankIdx = find("bank name", "bank", "institution");
+      const nameIdx = find("recipient name", "recipient", "name", "beneficiary");
+      const countryIdx = find("country", "destination country");
+      const amountIdx = find("amount", "amount usd", "amount ngn");
+      const narrationIdx = find("narration", "note", "description", "reference");
+
+      if (accIdx < 0 || amountIdx < 0) {
         throw new Error(
-          "Include these CSV columns: Recipient, Country, Account, Amount.",
+          "Include columns: Account Number, Bank Name, Amount, Narration."
         );
-      const imported = lines.slice(1).map((line) => {
+      }
+
+      const imported: BulkRecipientRow[] = lines.slice(1).map((line, idx) => {
         const cells = parseCsvLine(line);
-        const rawCountry = cells[countryIndex] || "";
-        const country =
-          countries.find(
-            (item: string) => item.toLowerCase() === rawCountry.toLowerCase(),
-          ) ||
-          countries.find(
-            (item: string) =>
-              countryCodes[item]?.toLowerCase() === rawCountry.toLowerCase(),
-          ) ||
-          rawCountry;
+        const rawCountry = countryIdx >= 0 ? cells[countryIdx] || "Nigeria" : "Nigeria";
+        const matchedCountry =
+          countries.find((c) => c.toLowerCase() === rawCountry.toLowerCase()) ||
+          "Nigeria";
+        const rawAcc = (cells[accIdx] || "").replace(/\D/g, "").slice(0, 16);
+        const rawBank =
+          bankIdx >= 0
+            ? cells[bankIdx] || ""
+            : (CORRIDOR_BANKS[matchedCountry] || CORRIDOR_BANKS.Nigeria)[0] || "";
+        const resolvedName =
+          nameIdx >= 0 && cells[nameIdx]?.trim()
+            ? cells[nameIdx].trim()
+            : rawAcc.length >= 8 && rawBank
+              ? resolveInterbankAccountName(rawAcc, rawBank, matchedCountry)
+              : "";
+
         return {
-          key: String(Date.now()) + Math.random(),
-          name: cells[nameIndex] || "",
-          country,
-          account: cells[accountIndex] || "",
-          amount: cells[amountIndex] || "",
+          key: `csv-${Date.now()}-${idx}`,
+          country: matchedCountry,
+          accountNumber: rawAcc,
+          bank: rawBank,
+          recipientName: resolvedName,
+          amount: cells[amountIdx] || "",
+          narration: narrationIdx >= 0 ? cells[narrationIdx] || "" : "",
+          isLookingUp: false,
         };
       });
+
       setRows(imported);
       setSubmitted([]);
-      setError(
-        String(imported.length) +
-          " payment rows imported. Review the details before creating the batch.",
-      );
     } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "We could not read that CSV file.",
-      );
+      setError(cause instanceof Error ? cause.message : "Could not read CSV file.");
     }
   };
-  const loadSample = () => {
-    setRows([
-      {
-        key: "sample-1",
-        name: "Nuru Office Supplies",
-        country: "Kenya",
-        account: "•••• 0912",
-        amount: "184",
-      },
-      {
-        key: "sample-2",
-        name: "Kora Logistics Ltd",
-        country: "Ghana",
-        account: "•••• 4421",
-        amount: "95",
-      },
-      {
-        key: "sample-3",
-        name: "Amina Yusuf",
-        country: "Nigeria",
-        account: "•••• 8830",
-        amount: "320",
-      },
-    ]);
-    setSubmitted([]);
-    setError("Sample payments loaded. Review and create this demo batch.");
-  };
+
   const downloadTemplate = () => {
     const csv =
-      "Recipient,Country,Account,Amount\nSample Supplier,Kenya,123456789,150.00";
+      "Account Number,Bank Name,Amount,Narration\n0123456789,Guaranty Trust Bank (GTBank),50000,Salary\n9876543210,Access Bank,25000,Vendor Payout";
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
     const link = document.createElement("a");
     link.href = url;
@@ -162,293 +257,427 @@ export function BulkTransfer({
     link.click();
     URL.revokeObjectURL(url);
   };
+
   const createBatch = () => {
-    if (rows.length === 0) {
-      setError("Add payments or import a CSV file first.");
+    if (validRows.length === 0) {
+      setError("Complete at least one recipient with verified account and amount.");
       return;
     }
-    const invalid = rows.find((row) => rowError(row));
-    if (invalid) {
-      setError(
-        (invalid.name || "A payment row") + ": " + rowError(invalid) + ".",
-      );
+    if (validRows.length !== rows.length) {
+      setError("Please complete or remove unfinished recipient rows.");
       return;
     }
-    const now = Date.now(),
-      id = "BT-" + String(now).slice(-7);
-    const created = rows.map(
-      (row, index): Transfer => ({
-        id:
-          "BP-" +
-          String(now).slice(-6) +
-          "-" +
-          String(index + 1).padStart(2, "0"),
+
+    const now = Date.now();
+    const id = "BT-" + String(now).slice(-7);
+    const created: Transfer[] = rows.map((row, index) => {
+      const curr = COUNTRY_TO_CURRENCY[row.country] || "NGN";
+      return {
+        id: "BP-" + String(now).slice(-6) + "-" + String(index + 1).padStart(2, "0"),
         batchId: id,
-        name: row.name.trim(),
+        name: row.recipientName.trim(),
         country: row.country,
         amount: Number(row.amount),
-        currency: "USD",
+        currency: curr,
+        provider: row.bank,
+        method: "Bank transfer",
+        description: row.narration.trim() || undefined,
         status: "Processing",
         date: "Just now",
-      }),
-    );
+      };
+    });
+
     setTransfers((current) => [...created, ...current]);
     setBatchId(id);
     setSubmitted(created);
     setError("");
   };
-  if (submitted.length)
+
+  // ==========================================
+  // Batch Confirmation Receipt View
+  // ==========================================
+  if (submitted.length > 0) {
     return (
-      <>
-        <PageHeading
-          eyebrow="BUSINESS PAYMENTS"
-          title="Batch created"
-          subtitle={
-            batchId +
-            " · " +
-            submitted.length +
-            " payments are now in your payment history."
-          }
-          action={
-            <button
-              className="button button-secondary"
-              onClick={() => {
-                setRows([]);
-                setSubmitted([]);
-                setBatchId("");
-              }}
-            >
-              Create another batch
-            </button>
-          }
-        />
-        <div className="bulk-confirmation">
-          <span className="bulk-success-icon">
-            <Icon name="checkCircle" size={25} />
-          </span>
-          <div>
-            <h2>Your payment batch is ready</h2>
-            <p>
-              Each payment has its own reference, so you can follow its status
-              separately.
-            </p>
+      <div className="max-w-5xl mx-auto py-2 sm:py-6 px-4 space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <h1 className="text-2xl font-heading font-bold text-ink m-0">
+            Batch submitted
+          </h1>
+          <button
+            type="button"
+            className="button button-secondary h-10 px-4 rounded-xl text-xs font-semibold cursor-pointer"
+            onClick={() => {
+              setRows([createEmptyRow()]);
+              setSubmitted([]);
+              setBatchId("");
+            }}
+          >
+            New batch
+          </button>
+        </div>
+
+        <div className="bg-paper border border-line rounded-2xl p-6 shadow-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <span className="w-11 h-11 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+              <Icon name="checkCircle" size={22} />
+            </span>
+            <div>
+              <strong className="text-sm font-bold text-ink block">
+                {batchId} · {submitted.length} payments
+              </strong>
+              <span className="text-xs text-muted">Processing across partner rails</span>
+            </div>
           </div>
-          <div className="bulk-confirmation-total">
-            <small>BATCH TOTAL</small>
-            <strong>
-              USD{" "}
+          <div className="sm:text-right">
+            <span className="text-[10px] font-bold text-muted uppercase tracking-wider block">
+              BATCH TOTAL
+            </span>
+            <strong className="text-xl font-heading font-bold text-ink font-mono">
+              {primarySymbol}
               {submitted
-                .reduce((sum, transfer) => sum + transfer.amount, 0)
+                .reduce((s, t) => s + t.amount, 0)
                 .toLocaleString("en-US", { minimumFractionDigits: 2 })}
             </strong>
           </div>
         </div>
-        <section className="content-section bulk-results">
-          <div className="section-heading">
-            <div>
-              <h2>Payments in this batch</h2>
-              <p>Open a payment to see its reference and current status.</p>
-            </div>
-          </div>
-          {submitted.map((transfer) => (
-            <article className="bulk-result-row" key={transfer.id}>
-              <CountryBadge country={transfer.country} />
-              <div className="bulk-result-payee">
-                <strong>{transfer.name}</strong>
-                <small>
-                  {transfer.id} · {transfer.batchId}
-                </small>
+
+        <div className="bg-paper border border-line rounded-2xl overflow-hidden shadow-subtle divide-y divide-line">
+          {submitted.map((t) => (
+            <div
+              key={t.id}
+              className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-soft transition-colors"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <CountryBadge country={t.country} />
+                <div className="min-w-0">
+                  <strong className="text-xs font-bold text-ink block truncate">
+                    {t.name}
+                  </strong>
+                  <span className="text-[11px] text-muted font-mono block truncate">
+                    {t.provider} · {t.id}
+                  </span>
+                </div>
               </div>
-              <strong className="bulk-result-amount">
-                USD {transfer.amount.toFixed(2)}
-              </strong>
-              <span className="status status-processing">
-                <i />
-                Processing
-              </span>
-              <button
-                className="button button-secondary button-small"
-                onClick={() => onTrackTransfer(transfer)}
-              >
-                Track payment
-              </button>
-            </article>
+              <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0">
+                <strong className="text-xs font-heading font-bold text-ink font-mono">
+                  {CURRENCY_SYMBOLS[t.currency] || `${t.currency} `}
+                  {t.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                </strong>
+                <button
+                  type="button"
+                  onClick={() => onTrackTransfer(t)}
+                  className="button button-secondary h-8 px-3 rounded-lg text-[11px] font-semibold cursor-pointer"
+                >
+                  Track
+                </button>
+              </div>
+            </div>
           ))}
-        </section>
-        <p className="prototype-caption">
-          Demo payment references are also available in Track transaction and
-          Transactions.
-        </p>
-      </>
-    );
-  return (
-    <>
-      <PageHeading
-        eyebrow="BUSINESS PAYMENTS"
-        title="Bulk transfer"
-        subtitle="Prepare payments together, then track each one by reference."
-        action={
-          <button
-            className="button button-secondary"
-            onClick={downloadTemplate}
-          >
-            <Icon name="download" size={16} /> CSV template
-          </button>
-        }
-      />
-      <section className="bulk-import-panel">
-        <div className="bulk-import-icon">
-          <Icon name="upload" size={22} />
         </div>
-        <div className="bulk-import-copy">
-          <h2>Start with a payment list</h2>
-          <p>
-            Upload a CSV with recipient, country, account and amount columns.
-            You can review and edit each payment before creating the batch.
+      </div>
+    );
+  }
+
+  // ==========================================
+  // Main Add Recipients / Bulk Transfer Form
+  // ==========================================
+  return (
+    <div className="max-w-5xl mx-auto py-2 sm:py-6 px-4 space-y-6">
+      {/* Top Header with Live Verified & Total Badges */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-heading font-bold text-ink tracking-tight m-0">
+            Add Recipients
+          </h1>
+          <p className="text-xs text-muted mt-0.5 m-0">
+            Add recipients manually or upload a CSV file
           </p>
         </div>
-        <label className="button button-primary bulk-file-button">
-          <Icon name="upload" size={16} /> Choose CSV
-          <input
-            type="file"
-            accept=".csv,text/csv"
-            onChange={(event) => {
-              void importCsv(event.target.files?.[0]);
-              event.currentTarget.value = "";
-            }}
-          />
-        </label>
-      </section>
-      <div className="bulk-demo-actions">
-        <span>Or start with sample data</span>
-        <button className="link-button" onClick={loadSample}>
-          Load sample payments <span>→</span>
-        </button>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <span
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold border ${
+              verifiedCount === rows.length && rows.length > 0
+                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20"
+                : "bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20"
+            }`}
+          >
+            {verifiedCount}/{rows.length} Verified
+          </span>
+          <span className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 font-mono">
+            Total: {primarySymbol}
+            {totalAmount.toLocaleString("en-US", {
+              maximumFractionDigits: 2,
+            })}
+          </span>
+        </div>
       </div>
+
       {error && (
-        <div
-          className={
-            "notice " +
-            (error.includes("imported") || error.includes("Sample")
-              ? "success-notice"
-              : "error-notice")
-          }
-        >
+        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-400 font-medium">
           {error}
         </div>
       )}
-      <section className="content-section bulk-editor">
-        <div className="section-heading">
-          <div>
-            <h2>Review payments</h2>
-            <p>
-              {rows.length} {rows.length === 1 ? "payment" : "payments"} added
-            </p>
-          </div>
+
+      {/* Bulk Upload via CSV Card */}
+      <div className="bg-paper border border-line rounded-2xl p-5 sm:p-6 shadow-subtle space-y-4">
+        <div className="flex items-center gap-2 text-xs sm:text-sm font-heading font-bold text-ink">
+          <Icon name="inbox" size={16} className="text-ink" />
+          <span>Bulk Upload via CSV</span>
+        </div>
+
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setIsDragging(true);
+          }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setIsDragging(false);
+            const file = e.dataTransfer.files?.[0];
+            if (file) void importCsv(file);
+          }}
+          onClick={() => fileInputRef.current?.click()}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              fileInputRef.current?.click();
+            }
+          }}
+          className={`border-2 border-dashed rounded-xl py-8 px-4 flex flex-col items-center justify-center text-center transition-colors cursor-pointer ${
+            isDragging
+              ? "border-ink bg-soft"
+              : "border-line hover:border-ink/40 hover:bg-soft/40"
+          }`}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="sr-only"
+            onChange={(e) => {
+              void importCsv(e.target.files?.[0]);
+              e.currentTarget.value = "";
+            }}
+          />
+          <Icon name="upload" size={22} className="text-muted mb-2" />
+          <p className="text-xs font-medium text-ink m-0">
+            Drag &amp; drop your CSV file here, or{" "}
+            <span className="font-bold underline">browse</span>
+          </p>
+          <span className="text-[11px] text-muted mt-1">
+            Columns: Account Number, Bank Name, Amount, Narration
+          </span>
+        </div>
+
+        <div className="flex justify-end">
           <button
-            className="button button-secondary button-small"
-            onClick={() => addRow()}
+            type="button"
+            onClick={downloadTemplate}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-ink hover:underline cursor-pointer"
           >
-            <Icon name="plus" size={15} /> Add payment
+            <Icon name="download" size={14} />
+            <span>Download CSV Template</span>
           </button>
         </div>
-        {rows.length === 0 ? (
-          <div className="bulk-empty">
-            <span className="bulk-empty-mark">
-              <Icon name="upload" size={19} />
-            </span>
-            <strong>Your payment list will appear here</strong>
-            <span>Upload a CSV or add recipients one at a time.</span>
-          </div>
-        ) : (
-          <div className="bulk-rows">
-            <div className="bulk-row bulk-row-heading">
-              <span />
-              <span>RECIPIENT</span>
-              <span>COUNTRY</span>
-              <span>ACCOUNT / PHONE</span>
-              <span>AMOUNT · USD</span>
-              <span />
-            </div>
-            {rows.map((row, index) => (
-              <div className="bulk-row" key={row.key}>
-                <span className="bulk-row-index">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-                <input
-                  aria-label={"Recipient " + (index + 1)}
-                  value={row.name}
-                  onChange={(event) =>
-                    update(row.key, "name", event.target.value)
-                  }
-                  placeholder="Recipient name"
-                />
-                <CountrySelect
-                  value={row.country}
-                  onChange={(country: string) => update(row.key, "country", country)}
-                />
-                <input
-                  aria-label={"Account " + (index + 1)}
-                  value={row.account}
-                  onChange={(event) =>
-                    update(row.key, "account", event.target.value)
-                  }
-                  placeholder="Account or phone"
-                />
-                <input
-                  aria-label={"Amount " + (index + 1)}
-                  type="number"
-                  min="0.01"
-                  value={row.amount}
-                  onChange={(event) =>
-                    update(row.key, "amount", event.target.value)
-                  }
-                  placeholder="0.00"
-                />
-                <button
-                  className="icon-button bulk-remove"
-                  aria-label={"Remove payment " + (index + 1)}
-                  onClick={() =>
-                    setRows((current) =>
-                      current.filter((item) => item.key !== row.key),
-                    )
-                  }
-                >
-                  <Icon name="close" size={16} />
-                </button>
-                {rowError(row) && (
-                  <small className="bulk-row-error">{rowError(row)}</small>
-                )}
+      </div>
+
+      {/* Recipient List Section */}
+      <div className="space-y-3">
+        <h2 className="text-xs sm:text-sm font-heading font-bold text-ink m-0">
+          Recipient List
+        </h2>
+
+        <div className="space-y-4">
+          {rows.map((row, index) => {
+            const rowCurrency = COUNTRY_TO_CURRENCY[row.country] || "NGN";
+            const rowSymbol = CURRENCY_SYMBOLS[rowCurrency] || "₦";
+            const banks = CORRIDOR_BANKS[row.country] || CORRIDOR_BANKS.Nigeria;
+            const verified = isRowVerified(row);
+
+            return (
+              <div
+                key={row.key}
+                className="bg-paper border border-line rounded-2xl p-5 shadow-subtle space-y-4"
+              >
+                {/* Row Header: RECIPIENT N + Country selector + Verified/Remove */}
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-[11px] font-bold text-muted uppercase tracking-wider">
+                      RECIPIENT {index + 1}
+                    </span>
+                    <select
+                      value={row.country}
+                      onChange={(e) =>
+                        handleFieldChange(row.key, "country", e.target.value)
+                      }
+                      aria-label={`Recipient ${index + 1} country`}
+                      className="h-8 pl-2.5 border border-line rounded-lg bg-soft text-ink text-[11px] font-medium outline-none cursor-pointer"
+                    >
+                      {Object.keys(CORRIDOR_BANKS).map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                    {verified && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
+                        <Icon name="check" size={12} />
+                        Verified
+                      </span>
+                    )}
+                  </div>
+
+                  {rows.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeRow(row.key)}
+                      aria-label={`Remove recipient ${index + 1}`}
+                      className="w-7 h-7 rounded-lg text-muted hover:text-rose-600 dark:hover:text-rose-400 hover:bg-soft flex items-center justify-center transition-colors cursor-pointer"
+                    >
+                      <Icon name="close" size={14} />
+                    </button>
+                  )}
+                </div>
+
+                {/* 4-Column Field Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                  {/* Account Number */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold text-ink block">
+                      Account Number
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={16}
+                      value={row.accountNumber}
+                      onChange={(e) =>
+                        handleFieldChange(
+                          row.key,
+                          "accountNumber",
+                          e.target.value
+                        )
+                      }
+                      placeholder="10-digit account"
+                      className="w-full h-11 px-3.5 border border-line rounded-xl bg-paper text-ink font-mono text-xs sm:text-sm outline-none focus:border-ink placeholder:text-muted/60"
+                    />
+                  </div>
+
+                  {/* Bank */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold text-ink block">
+                      Bank
+                    </label>
+                    <select
+                      value={row.bank}
+                      onChange={(e) =>
+                        handleFieldChange(row.key, "bank", e.target.value)
+                      }
+                      className="w-full h-11 pl-3.5 pr-10 border border-line rounded-xl bg-paper text-ink text-xs sm:text-sm outline-none focus:border-ink cursor-pointer"
+                    >
+                      <option value="">Select bank...</option>
+                      {banks.map((b) => (
+                        <option key={b} value={b}>
+                          {b}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Recipient Name (Auto-filled on lookup) */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold text-ink block">
+                      Recipient Name
+                    </label>
+                    <input
+                      type="text"
+                      value={
+                        row.isLookingUp
+                          ? "Resolving account..."
+                          : row.recipientName
+                      }
+                      onChange={(e) =>
+                        handleFieldChange(
+                          row.key,
+                          "recipientName",
+                          e.target.value
+                        )
+                      }
+                      placeholder="Auto-filled on lookup"
+                      className="w-full h-11 px-3.5 border border-line rounded-xl bg-soft text-ink text-xs sm:text-sm outline-none focus:border-ink placeholder:text-muted/60"
+                    />
+                  </div>
+
+                  {/* Amount */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold text-ink block">
+                      Amount ({rowSymbol.trim()})
+                    </label>
+                    <div className="flex items-center h-11 px-3.5 border border-line rounded-xl bg-paper focus-within:border-ink transition-colors">
+                      <span className="text-xs sm:text-sm font-mono text-muted mr-1.5 select-none">
+                        {rowSymbol}
+                      </span>
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="any"
+                        value={row.amount}
+                        onChange={(e) =>
+                          handleFieldChange(row.key, "amount", e.target.value)
+                        }
+                        placeholder="0.00"
+                        className="w-full bg-transparent border-0 outline-none text-xs sm:text-sm font-mono text-ink placeholder:text-muted/60"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Narration (Optional) */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-ink block">
+                    Narration (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={row.narration}
+                    onChange={(e) =>
+                      handleFieldChange(row.key, "narration", e.target.value)
+                    }
+                    placeholder="e.g. Salary, Vendor Payout"
+                    className="w-full h-11 px-3.5 border border-line rounded-xl bg-paper text-ink text-xs sm:text-sm outline-none focus:border-ink placeholder:text-muted/60"
+                  />
+                </div>
               </div>
-            ))}
-          </div>
-        )}
-        {rows.length > 0 && (
-          <footer className="bulk-editor-footer">
-            <div>
-              <span>{validRows.length} ready</span>
-              <strong>
-                Batch total · USD{" "}
-                {total.toLocaleString("en-US", {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
-              </strong>
-            </div>
-            <button
-              className="button button-primary"
-              onClick={createBatch}
-              disabled={validRows.length !== rows.length}
-            >
-              Create demo batch <span>→</span>
-            </button>
-          </footer>
-        )}
-        <p className="prototype-caption">
-          Prototype only. Creating a batch records simulated payments in this
-          business account; no funds are sent.
-        </p>
-      </section>
-    </>
+            );
+          })}
+        </div>
+
+        {/* Add Another Recipient Bar */}
+        <button
+          type="button"
+          onClick={addRow}
+          className="w-full h-11 border border-line rounded-xl bg-paper hover:bg-soft hover:border-ink/40 text-xs font-semibold text-ink flex items-center justify-center gap-2 transition-colors cursor-pointer"
+        >
+          <Icon name="plus" size={15} />
+          <span>Add Another Recipient</span>
+        </button>
+      </div>
+
+      {/* Bottom Submit Row */}
+      <div className="flex items-center justify-end pt-2">
+        <button
+          type="button"
+          onClick={createBatch}
+          disabled={validRows.length === 0 || validRows.length !== rows.length}
+          className="button button-primary h-11 px-6 rounded-xl text-xs font-bold inline-flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:pointer-events-none transition-all"
+        >
+          <span>Continue</span>
+          <Icon name="chevron" size={14} />
+        </button>
+      </div>
+    </div>
   );
-}
+}

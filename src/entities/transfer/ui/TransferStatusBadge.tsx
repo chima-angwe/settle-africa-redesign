@@ -6,7 +6,9 @@ export function TransferStatusBadge({ status }: { status: TransferStatus | strin
       ? "bg-emerald-600 dark:bg-emerald-400"
       : status === "Processing"
         ? "bg-amber-600 dark:bg-amber-400"
-        : "bg-muted";
+        : status === "Failed"
+          ? "bg-rose-600 dark:bg-rose-400"
+          : "bg-muted";
 
   return (
     <span className="status inline-flex items-center gap-1.5 px-[7px] py-1 border border-line rounded-[2px] text-ink text-[8px] font-semibold tracking-wide">
@@ -15,4 +17,3 @@ export function TransferStatusBadge({ status }: { status: TransferStatus | strin
     </span>
   );
 }
-

@@ -3,7 +3,7 @@ import { Icon } from "../icon";
 export interface StatCardProps {
   label: string;
   value: string;
-  note: string;
+  note?: string;
   icon: string;
   tag?: string;
 }
@@ -11,28 +11,21 @@ export interface StatCardProps {
 export function StatCard({
   label,
   value,
-  note,
   icon,
-  tag,
 }: StatCardProps) {
   return (
-    <div className="stat-card flex min-h-[127px] flex-col items-start p-4 border-r border-line last:border-r-0 bg-transparent">
-      <div className="stat-top flex w-full items-center justify-between mb-[11px]">
-        <span className="stat-icon inline-grid w-[29px] h-[29px] place-items-center border border-line rounded-full bg-paper text-ink">
-          <Icon name={icon} />
+    <div className="stat-card flex flex-col justify-between p-4 sm:p-5 border-r border-line last:border-r-0 bg-transparent min-h-[104px]">
+      <div className="flex w-full items-center justify-between gap-2 mb-3">
+        <span className="stat-label text-muted text-[11px] font-medium">
+          {label}
         </span>
-        {tag && (
-          <span
-            className={`stat-tag px-1.5 py-1 border border-line rounded-[2px] text-muted text-[6px] font-bold tracking-[0.8px] ${tag === "ACTION NEEDED" ? "tag-warn text-ink border-ink" : ""}`}
-          >
-            {tag}
-          </span>
-        )}
+        <span className="stat-icon inline-grid w-8 h-8 place-items-center border border-line rounded-lg bg-soft text-ink shrink-0">
+          <Icon name={icon} size={15} />
+        </span>
       </div>
-      <span className="stat-label text-muted text-[9px]">{label}</span>
-      <strong className="stat-value mt-1 font-heading font-bold text-base tracking-[-0.4px] text-ink">{value}</strong>
-      <span className="stat-note mt-1 text-subtle text-[8px]">{note}</span>
+      <strong className="stat-value font-heading font-bold text-lg sm:text-xl tracking-[-0.4px] text-ink">
+        {value}
+      </strong>
     </div>
   );
 }
-

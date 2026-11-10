@@ -11,6 +11,17 @@ export interface SidebarProps {
   onClearTargetRecipient?: () => void;
 }
 
+interface NavItemConfig {
+  page: Page;
+  label: string;
+  icon: string;
+}
+
+interface NavSection {
+  title: string;
+  items: NavItemConfig[];
+}
+
 export function Sidebar({
   page,
   setPage,
@@ -20,16 +31,52 @@ export function Sidebar({
   onLogout,
   onClearTargetRecipient,
 }: SidebarProps) {
-  const navItems: { label: Page; icon: string }[] = [
-    { label: "Dashboard", icon: "grid" },
-    { label: "Send money", icon: "send" },
-    ...(accountType === "business"
-      ? [{ label: "Bulk transfer" as Page, icon: "upload" }]
-      : []),
-    { label: "Track transaction", icon: "search" },
-    { label: "Transactions", icon: "clock" },
-    { label: "Recipients", icon: "users" },
+  const sections: NavSection[] = [
+    {
+      title: "OVERVIEW",
+      items: [
+        { page: "Dashboard", label: "Dashboard", icon: "grid" },
+        { page: "Wallet", label: "Wallet", icon: "wallet" },
+      ],
+    },
+    {
+      title: "PAYMENTS",
+      items: [
+        { page: "Send money", label: "Send money", icon: "send" },
+        ...(accountType === "business"
+          ? [
+              {
+                page: "Bulk transfer" as Page,
+                label: "Bulk transfer",
+                icon: "upload",
+              },
+            ]
+          : []),
+        { page: "Recipients", label: "Recipients", icon: "users" },
+      ],
+    },
+    {
+      title: "ACTIVITY",
+      items: [
+        { page: "Transactions", label: "Transactions", icon: "clock" },
+        { page: "Track transaction", label: "Track transaction", icon: "search" },
+        { page: "Notifications", label: "Notifications", icon: "bell" },
+      ],
+    },
   ];
+
+  const accountItems: NavItemConfig[] = [
+    { page: "Linked banks", label: "Linked banks", icon: "card" },
+    { page: "Profile", label: "Profile & settings", icon: "user" },
+  ];
+
+  const handleNavClick = (targetPage: Page) => {
+    if (targetPage === "Send money" && onClearTargetRecipient) {
+      onClearTargetRecipient();
+    }
+    setPage(targetPage);
+    setMobileNav(false);
+  };
 
   return (
     <>
@@ -41,14 +88,13 @@ export function Sidebar({
           onClick={() => setMobileNav(false)}
         />
       )}
-      <aside className={`sidebar ${mobileNav ? "sidebar-open" : ""}`}>
+      <aside
+        className={`sidebar ${mobileNav ? "sidebar-open" : ""} [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden`}
+      >
         <button
           type="button"
           className="brand"
-          onClick={() => {
-            setPage("Dashboard");
-            setMobileNav(false);
-          }}
+          onClick={() => handleNavClick("Dashboard")}
         >
           <LogoMark />
           <span className="brand-copy">
@@ -58,67 +104,62 @@ export function Sidebar({
             </small>
           </span>
         </button>
-        <div className="nav-caption">WORKSPACE</div>
-        <nav className="main-nav" aria-label="Main navigation">
-          {navItems.map((item) => (
-            <button
-              type="button"
-              key={item.label}
-              className={`nav-item ${page === item.label ? "active" : ""}`}
-              onClick={() => {
-                if (item.label === "Send money" && onClearTargetRecipient) {
-                  onClearTargetRecipient();
-                }
-                setPage(item.label);
-                setMobileNav(false);
-              }}
+
+        <nav className="main-nav mt-5 space-y-4" aria-label="Main navigation">
+          {sections.map((section, idx) => (
+            <div
+              key={section.title}
+              className={idx > 0 ? "pt-3 border-t border-[#242424]" : ""}
             >
-              <Icon name={item.icon} />
-              <span>{item.label}</span>
-              {item.label === "Track transaction" && <i className="nav-dot" />}
-            </button>
+              <span className="block px-3 mb-1.5 text-[9px] font-bold tracking-[1.6px] text-[#747474] uppercase">
+                {section.title}
+              </span>
+              <div className="grid gap-1">
+                {section.items.map((item) => (
+                  <button
+                    type="button"
+                    key={item.page}
+                    className={`nav-item !min-h-[42px] ${page === item.page ? "active" : ""}`}
+                    onClick={() => handleNavClick(item.page)}
+                  >
+                    <Icon name={item.icon} />
+                    <span>{item.label}</span>
+                    {page === item.page && <i className="nav-dot" />}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
         </nav>
-        <div className="sidebar-bottom">
-          <div className="nav-caption">ACCOUNT</div>
-          <button
-            type="button"
-            className={`nav-item ${page === "Linked banks" ? "active" : ""}`}
-            onClick={() => {
-              setPage("Linked banks");
-              setMobileNav(false);
-            }}
-          >
-            <Icon name="card" />
-            <span>Linked banks</span>
-          </button>
-          <button
-            type="button"
-            className={`nav-item ${page === "Profile" ? "active" : ""}`}
-            onClick={() => {
-              setPage("Profile");
-              setMobileNav(false);
-            }}
-          >
-            <Icon name="user" />
-            <span>Profile & settings</span>
-          </button>
-          <div className="sidebar-help">
-            <span className="help-mark">?</span>
-            <span>
-              <strong>Need a hand?</strong>
-              <small>Our team is here to help</small>
-            </span>
-            <Icon name="chevron" size={16} />
+
+        <div className="sidebar-bottom mt-auto pt-3 border-t border-[#242424]">
+          <span className="block px-3 mb-1.5 text-[9px] font-bold tracking-[1.6px] text-[#747474] uppercase">
+            ACCOUNT
+          </span>
+          <div className="grid gap-1">
+            {accountItems.map((item) => (
+              <button
+                type="button"
+                key={item.page}
+                className={`nav-item !min-h-[42px] ${page === item.page ? "active" : ""}`}
+                onClick={() => handleNavClick(item.page)}
+              >
+                <Icon name={item.icon} />
+                <span>{item.label}</span>
+                {page === item.page && <i className="nav-dot" />}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="nav-item logout !min-h-[42px]"
+              onClick={onLogout}
+            >
+              <Icon name="logout" />
+              <span>Sign out</span>
+            </button>
           </div>
-          <button type="button" className="nav-item logout" onClick={onLogout}>
-            <Icon name="logout" />
-            <span>Sign out</span>
-          </button>
         </div>
-        <div className="sidebar-footnote">A clearer way to move money.</div>
       </aside>
     </>
   );
 }
-

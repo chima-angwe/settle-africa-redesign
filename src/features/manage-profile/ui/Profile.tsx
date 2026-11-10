@@ -51,8 +51,8 @@ export function Profile({
     if (!cleanName) {
       setNotice(
         isBusiness
-          ? "Enter your business name before saving."
-          : "Enter your full name before saving.",
+          ? "Enter your business name."
+          : "Enter your full name.",
       );
       return;
     }
@@ -72,17 +72,13 @@ export function Profile({
       isBusiness ? "settle-demo-business-phone" : "settle-demo-phone",
       phone.trim(),
     );
-    setNotice("Your profile was updated in this prototype.");
+    setNotice("Profile updated.");
     setTimeout(() => setNotice(""), 3000);
   };
   const tabs = ["Profile", "Security", "Notifications", "Help & support"];
   return (
     <>
-      <PageHeading
-        eyebrow={isBusiness ? "BUSINESS ACCOUNT" : "YOUR ACCOUNT"}
-        title="Profile & settings"
-        subtitle=""
-      />
+      <PageHeading title="Profile & settings" />
       {notice && (
         <div className="notice success-notice">
           <Icon name="check" size={16} />
@@ -109,9 +105,7 @@ export function Profile({
                 <h2>{name}</h2>
                 <span className="profile-tier">
                   <Icon name="shield" size={14} />{" "}
-                  {isBusiness
-                    ? "Business account · Demo"
-                    : "Individual account · Demo"}
+                  {isBusiness ? "Business account" : "Individual account"}
                 </span>
               </div>
               <span className="profile-hero-mark">SETTLE AFRICA</span>
@@ -123,9 +117,7 @@ export function Profile({
               <div className="profile-summary-grid">
                 <div>
                   <span>Account reference</span>
-                  <strong>
-                    {isBusiness ? "BIZ-0001" : "SET-0001"} <small>DEMO</small>
-                  </strong>
+                  <strong>{isBusiness ? "BIZ-0001" : "SET-0001"}</strong>
                 </div>
                 <div>
                   <span>Account type</span>
@@ -134,9 +126,7 @@ export function Profile({
                 {isBusiness && (
                   <div>
                     <span>Business category</span>
-                    <strong>
-                      Small business <small>DEMO</small>
-                    </strong>
+                    <strong>Small business</strong>
                   </div>
                 )}
                 {isBusiness && (
@@ -152,15 +142,6 @@ export function Profile({
                 <h2>
                   {isBusiness ? "Business verification" : "KYC & compliance"}
                 </h2>
-                <button
-                  onClick={() =>
-                    setNotice(
-                      `${isBusiness ? "Business" : "Identity"} verification will be connected in a later milestone.`,
-                    )
-                  }
-                >
-                  View verification <span>›</span>
-                </button>
               </div>
               <div className="profile-kyc-status">
                 <span className="profile-kyc-icon">
@@ -172,20 +153,16 @@ export function Profile({
                       ? "Company verification"
                       : "Identity verification"}
                   </strong>
-                  <p>
-                    {isBusiness
-                      ? "Business verification requirements will depend on the supported markets and service providers."
-                      : "Complete verification to unlock higher transfer limits and account features."}
-                  </p>
                 </div>
                 <span className="verification-badge warning-badge">
                   NOT VERIFIED
                 </span>
                 <button
-                  className="button button-primary button-small"
+                  type="button"
+                  className="button button-primary button-small cursor-pointer"
                   onClick={() =>
                     setNotice(
-                      `${isBusiness ? "Business" : "Identity"} verification will be connected in a later milestone.`,
+                      `${isBusiness ? "Business" : "Identity"} verification initiated.`,
                     )
                   }
                 >
@@ -233,7 +210,7 @@ export function Profile({
                     <CountryBadge country={profileCountry} />
                   </strong>
                 </div>
-                <button className="button button-primary" type="submit">
+                <button className="button button-primary cursor-pointer" type="submit">
                   Save changes <span>→</span>
                 </button>
               </form>
@@ -253,6 +230,7 @@ export function Profile({
         <nav className="profile-tabs" aria-label="Profile settings">
           {tabs.map((item) => (
             <button
+              type="button"
               key={item}
               className={tab === item ? "selected" : ""}
               onClick={() => setTab(item)}
@@ -272,7 +250,7 @@ export function Profile({
               {item}
             </button>
           ))}
-          <button className="profile-tab-signout" onClick={onLogout}>
+          <button type="button" className="profile-tab-signout" onClick={onLogout}>
             <Icon name="logout" size={17} />
             Sign out
           </button>
@@ -280,4 +258,4 @@ export function Profile({
       </div>
     </>
   );
-}
+}

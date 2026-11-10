@@ -1,1058 +1,876 @@
-import { useState } from 'react';
-import { Icon, PageHeading } from '@/shared/ui';
-import type { Page } from '@/shared/types';
-import type { Recipient } from '@/entities/recipient';
-import type { Transfer } from '@/entities/transfer';
-import { CountryBadge, CountryFlag, CountrySelect, countryFlag, payoutProviders, callingCodes } from '@/entities/country';
+import type React from "react";
+import { useState, useRef } from "react";
+import { Icon } from "@/shared/ui";
+import type { Page } from "@/shared/types";
+import { CountryFlag, CountrySelect, countryFlag } from "@/entities/country";
+import {
+  useSendMoneyFlow,
+  type UseSendMoneyFlowProps,
+} from "../model/useSendMoneyFlow";
+import {
+  SUPPORTED_SOURCE_CURRENCIES,
+  CORRIDOR_BANKS,
+} from "../model/data";
 
-export interface SendMoneyProps {
-  recipients: Recipient[];
-  targetRecipientId: number | null;
-  defaultCountry: string;
-  setTargetRecipientId: (id: number | null) => void;
-  setRecipients: (items: Recipient[]) => void;
-  transfers: Transfer[];
-  setTransfers: (items: Transfer[]) => void;
+export interface SendMoneyProps extends UseSendMoneyFlowProps {
   setPage: (page: Page) => void;
+  aside?: React.ReactNode;
 }
 
-export function SendMoney({
-  recipients,
-  targetRecipientId,
-  defaultCountry,
-  setTargetRecipientId,
-  setRecipients,
-  transfers,
-  setTransfers,
-  setPage,
-}: {
-  recipients: Recipient[];
-  targetRecipientId: number | null;
-  defaultCountry: string;
-  setTargetRecipientId: (id: number | null) => void;
-  setRecipients: (items: Recipient[]) => void;
-  transfers: Transfer[];
-  setTransfers: (items: Transfer[]) => void;
-  setPage: (page: Page) => void;
-}) {
-  const targetRecipient = recipients.find(
-    (item) => item.id === targetRecipientId,
-  );
-  const [step, setStep] = useState(targetRecipient ? 2 : 1);
-  const [country, setCountry] = useState(
-    targetRecipient?.country || defaultCountry,
-  );
-  const [recipientId, setRecipientId] = useState(
-    targetRecipient ? String(targetRecipient.id) : "",
+export function SendMoney(props: SendMoneyProps) {
+  const { setPage, recipients, aside } = props;
+  const flow = useSendMoneyFlow(props);
+
+  const [recipientTab, setRecipientTab] = useState<"saved" | "new">(() =>
+    props.targetRecipientId || recipients.length === 0 ? "new" : "saved"
   );
   const [recipientSearch, setRecipientSearch] = useState("");
-  const [addingRecipient, setAddingRecipient] = useState(false);
-  const [newName, setNewName] = useState(targetRecipient?.name || "");
-  const [newAccount, setNewAccount] = useState(targetRecipient?.account || "");
-  const [amount, setAmount] = useState("");
-  const [sendCurrency, setSendCurrency] = useState("USD");
-  const [method, setMethod] = useState(
-    targetRecipient?.method || "Bank transfer",
-  );
-  const [provider, setProvider] = useState(
-    targetRecipient?.provider ||
-      payoutProviders(
-        targetRecipient?.country || defaultCountry,
-        targetRecipient?.method || "Bank transfer",
-      )[0] ||
-      "",
-  );
-  const [receiverType, setReceiverType] = useState("Personal");
-  const [asset, setAsset] = useState("USDC");
-  const [description, setDescription] = useState("");
-  const [saveRecipient, setSaveRecipient] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState(false);
-  const selected = recipients.find((item) => String(item.id) === recipientId);
-  const receiveCurrencyByCountry: Record<string, string> = {
-    Algeria: "DZD",
-    Angola: "AOA",
-    Benin: "XOF",
-    Botswana: "BWP",
-    "Burkina Faso": "XOF",
-    Burundi: "BIF",
-    "Cabo Verde": "CVE",
-    Cameroon: "XAF",
-    "Central African Republic": "XAF",
-    Chad: "XAF",
-    Comoros: "KMF",
-    Congo: "XAF",
-    "Côte d’Ivoire": "XOF",
-    "Democratic Republic of the Congo": "CDF",
-    Djibouti: "DJF",
-    Egypt: "EGP",
-    "Equatorial Guinea": "XAF",
-    Eritrea: "ERN",
-    Eswatini: "SZL",
-    Ethiopia: "ETB",
-    Gabon: "XAF",
-    Gambia: "GMD",
-    Ghana: "GHS",
-    Guinea: "GNF",
-    "Guinea-Bissau": "XOF",
-    Kenya: "KES",
-    Lesotho: "LSL",
-    Liberia: "LRD",
-    Libya: "LYD",
-    Madagascar: "MGA",
-    Malawi: "MWK",
-    Mali: "XOF",
-    Mauritania: "MRU",
-    Mauritius: "MUR",
-    Morocco: "MAD",
-    Mozambique: "MZN",
-    Namibia: "NAD",
-    Niger: "XOF",
-    Nigeria: "NGN",
-    Rwanda: "RWF",
-    "São Tomé and Príncipe": "STN",
-    Senegal: "XOF",
-    Seychelles: "SCR",
-    "Sierra Leone": "SLE",
-    Somalia: "SOS",
-    "South Sudan": "SSP",
-    Sudan: "SDG",
-    Tanzania: "TZS",
-    Togo: "XOF",
-    Tunisia: "TND",
-    Uganda: "UGX",
-    Zambia: "ZMW",
-    Zimbabwe: "USD",
-    "South Africa": "ZAR",
-  };
-  const destinationCurrency = receiveCurrencyByCountry[country] || "XOF";
-  const receiveRates: Record<string, number> = {
-    NGN: 1550,
-    KES: 129,
-    GHS: 15.2,
-    UGX: 3720,
-    TZS: 2670,
-    RWF: 1370,
-    EGP: 48.5,
-    ZAR: 18.2,
-    XOF: 610,
-    XAF: 610,
-  };
-  const sourceUsdRates: Record<string, number> = {
-    USD: 1,
-    GBP: 1.27,
-    EUR: 1.08,
-    NGN: 1 / 1550,
-  };
-  const sourceCurrencyFlags: Record<string, string> = {
-    USD: "us",
-    GBP: "gb",
-    EUR: "eu",
-    NGN: "ng",
-  };
-  const sourceUsdRate = sourceUsdRates[sendCurrency] || 1;
-  const usdAmount = Number(amount || 0) * sourceUsdRate;
-  const feeUsd = 2.99;
-  const feeAmount = feeUsd / sourceUsdRate;
-  const amountToConvert = Math.max(0, usdAmount - feeUsd);
-  const receiveRate = receiveRates[destinationCurrency];
-  const recipientAmount = receiveRate ? amountToConvert * receiveRate : 0;
-  const exchangeRate = receiveRate ? sourceUsdRate * receiveRate : 0;
-  const accountDigits = newAccount.replace(/\D/g, "");
-  const lookupReady =
-    method === "Stablecoin"
-      ? newAccount.trim().length >= 12
-      : method === "Recipient tag"
-        ? newAccount.trim().length >= 4
-        : accountDigits.length >=
-          (method === "Mobile money" || method === "M-Pesa" ? 8 : 6);
-  const demoNames = [
-    "Ada Okafor",
-    "Daniel Mensah",
-    "Amara Ndlovu",
-    "David Kamau",
-    "Zainab Bello",
-    "Kwame Boateng",
-  ];
-  const resolvedName = lookupReady
-    ? demoNames[Number(accountDigits.slice(-1)) % demoNames.length]
-    : selected?.name || "";
-  const displayAccount =
-    newAccount && newAccount !== selected?.account && newAccount.length > 4
-      ? `•••• ${newAccount.slice(-4)}`
-      : selected?.account || newAccount;
-  const visibleRecipients = recipients.filter((item) =>
-    `${item.name} ${item.country} ${item.method} ${item.provider || ""}`
-      .toLowerCase()
-      .includes(recipientSearch.toLowerCase()),
-  );
-  const currentProviders = payoutProviders(country, method);
-  const stageLabels = ["Recipient", "Amount", "Payout", "Details", "Review"];
+  const [copiedRef, setCopiedRef] = useState(false);
+  const [pin, setPin] = useState("");
+  const [pinError, setPinError] = useState("");
+  const pinInputRef = useRef<HTMLInputElement>(null);
 
-  const chooseRecipient = (recipient: Recipient) => {
-    setRecipientId(String(recipient.id));
-    setTargetRecipientId(recipient.id);
-    setCountry(recipient.country);
-    setNewName(recipient.name);
-    setNewAccount(recipient.account);
-    setMethod(recipient.method);
-    setProvider(
-      recipient.provider ||
-        payoutProviders(recipient.country, recipient.method)[0] ||
-        "",
-    );
-    setAddingRecipient(false);
+  const formatAmount = (num: number, maxDecimals = 2) => {
+    return num.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: maxDecimals,
+    });
   };
-  const startNewRecipient = () => {
-    setRecipientId("");
-    setTargetRecipientId(null);
-    setNewName("");
-    setNewAccount("");
-    setProvider(payoutProviders(country, method)[0] || "");
-    setAddingRecipient(true);
-    setSaveRecipient(false);
+
+  const copyRef = (text: string) => {
+    navigator.clipboard?.writeText(text);
+    setCopiedRef(true);
+    setTimeout(() => setCopiedRef(false), 2000);
   };
-  const finish = () => {
-    if (!description.trim()) {
-      setError("Add a short description for this transfer.");
+
+  const handleReset = () => {
+    setPin("");
+    setPinError("");
+    flow.resetFlow();
+  };
+
+  const handleBack = () => {
+    setPinError("");
+    flow.goBack();
+  };
+
+  const handleConfirmTransfer = () => {
+    if (pin.length < 4) {
+      setPinError("Please enter your 4-digit PIN to authorize payment");
+      pinInputRef.current?.focus();
       return;
     }
-    const name = resolvedName || newName.trim() || "Demo recipient";
-    const recipient: Recipient = selected
-      ? {
-          ...selected,
-          name,
-          country,
-          method,
-          account: newAccount.trim() || selected.account,
-          provider: provider || selected.provider,
-        }
-      : {
-          id: Date.now(),
-          name,
-          country,
-          method,
-          account: newAccount.trim(),
-          initials: name
-            .split(" ")
-            .map((part) => part[0])
-            .slice(0, 2)
-            .join("")
-            .toUpperCase(),
-          provider,
-        };
-    if (selected)
-      setRecipients(
-        recipients.map((item) => (item.id === selected.id ? recipient : item)),
-      );
-    else if (saveRecipient) setRecipients([...recipients, recipient]);
-    const transfer: Transfer = {
-      id: `ST-${Math.floor(100000 + Math.random() * 899999)}`,
-      name: recipient.name,
-      country,
-      amount: Number(amount),
-      currency: sendCurrency,
-      status: "Pending",
-      date: "Just now",
-      provider:
-        provider ||
-        (method === "Stablecoin"
-          ? asset
-          : method === "Recipient tag"
-            ? "Settle tag"
-            : ""),
-      method,
-      usdAmount,
-      recipientAmount: receiveRate ? recipientAmount : undefined,
-      recipientCurrency: destinationCurrency,
-      feeAmount,
-      feeCurrency: sendCurrency,
-      exchangeRate: receiveRate ? exchangeRate : undefined,
-      description: description.trim(),
-    };
-    setTransfers([transfer, ...transfers]);
-    setTargetRecipientId(null);
-    setSuccess(true);
+    setPinError("");
+    flow.confirmTransfer();
   };
 
-  if (success)
+  const filteredRecipients = recipients.filter((r) =>
+    `${r.name} ${r.country} ${r.provider || ""} ${r.account}`
+      .toLowerCase()
+      .includes(recipientSearch.toLowerCase())
+  );
+
+  // ==========================================
+  // Processing View
+  // ==========================================
+  if (flow.step === "processing") {
     return (
-      <div className="success-screen">
-        <div className="success-art">
-          <span>
-            <Icon name="check" size={32} />
-          </span>
-          <i />
-          <i />
-          <i />
-        </div>
-        <span className="eyebrow">TRANSFER REQUEST RECEIVED</span>
-        <h1>Transfer ready.</h1>
-        <p>
-          Your demo transfer to{" "}
-          <strong>{resolvedName || selected?.name || newName}</strong> is in
-          your activity. No real money has moved.
+      <div className="max-w-md mx-auto py-16 px-4 text-center">
+        <div className="w-14 h-14 mx-auto mb-6 rounded-full border-2 border-line border-t-ink animate-spin" />
+        <h2 className="text-xl font-heading font-bold text-ink mb-2">
+          Processing payment
+        </h2>
+        <p className="text-muted text-sm mb-8">
+          {flow.processingMessage || "Routing transfer through clearing rail..."}
         </p>
-        <div className="success-summary">
-          <span>Amount sent</span>
-          <strong>
-            {Number(amount).toFixed(2)} {sendCurrency}
-          </strong>
-          <span>Recipient gets</span>
-          <strong>
-            {receiveRate
-              ? `${recipientAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${destinationCurrency}`
-              : "Rate unavailable in demo"}
-          </strong>
+
+        <div className="w-full bg-soft h-1 rounded-full overflow-hidden mb-6">
+          <div
+            className="bg-ink h-full transition-all duration-300"
+            style={{ width: `${flow.processingProgress}%` }}
+          />
         </div>
-        <button
-          className="button button-primary"
-          onClick={() => setPage("Transactions")}
-        >
-          View transactions <span>→</span>
-        </button>
-        <button
-          className="button button-quiet"
-          onClick={() => {
-            setStep(1);
-            setRecipientId("");
-            setCountry(defaultCountry);
-            setNewName("");
-            setNewAccount("");
-            setAmount("");
-            setSendCurrency("USD");
-            setMethod("Bank transfer");
-            setProvider(
-              payoutProviders(defaultCountry, "Bank transfer")[0] || "",
-            );
-            setDescription("");
-            setSuccess(false);
-          }}
-        >
-          Make another transfer
-        </button>
+
+        <div className="text-xs text-muted flex items-center justify-between px-1">
+          <span>{flow.sendCurrency} → {flow.targetCurrency}</span>
+          <span className="font-mono">{flow.clearingRail.settlementRailProtocol}</span>
+        </div>
       </div>
     );
+  }
 
-  const updateMethod = (nextMethod: string) => {
-    setMethod(nextMethod);
-    setProvider(
-      nextMethod === "Stablecoin"
-        ? "USDC"
-        : nextMethod === "Recipient tag"
-          ? "Settle tag"
-          : payoutProviders(country, nextMethod)[0] || "",
-    );
-    setNewAccount("");
-    setError("");
-  };
-  const continueFlow = () => {
-    setError("");
-    if (step === 1) {
-      if (!recipientId && !newName.trim()) {
-        setError("Choose a saved recipient or add a name to continue.");
-        return;
-      }
-      setStep(2);
-    } else if (step === 2) {
-      if (!amount || Number(amount) <= 0) {
-        setError("Enter an amount greater than zero.");
-        return;
-      }
-      setStep(3);
-    } else if (step === 3) {
-      if (
-        method === "Bank transfer" ||
-        method === "Mobile money" ||
-        method === "M-Pesa"
-      ) {
-        if (!provider) {
-          setError("Choose a bank or mobile money provider.");
-          return;
-        }
-      }
-      setStep(4);
-    } else if (step === 4) {
-      const needsAccount =
-        method === "Bank transfer" ||
-        method === "Mobile money" ||
-        method === "M-Pesa";
-      if (
-        needsAccount &&
-        !recipientId &&
-        (!newAccount.trim() || !lookupReady)
-      ) {
-        setError(
-          method === "Mobile money" || method === "M-Pesa"
-            ? "Enter a valid mobile number to preview the demo recipient."
-            : "Enter a valid account number to preview the demo recipient.",
-        );
-        return;
-      }
-      if (
-        (method === "Stablecoin" || method === "Recipient tag") &&
-        !newAccount.trim()
-      ) {
-        setError(
-          method === "Stablecoin"
-            ? "Enter a wallet address to continue."
-            : "Enter a recipient tag to continue.",
-        );
-        return;
-      }
-      setStep(5);
-    } else finish();
-  };
-
-  return (
-    <>
-      <PageHeading
-        eyebrow="SEND MONEY"
-        title="Send money"
-        subtitle="Choose a recipient, enter an amount, and review the details."
-      />
-      <div className="send-layout send-flow-layout">
-        <div className="send-main">
-          <div className="stepper send-flow-stepper">
-            {stageLabels.map((label, index) => (
-              <div
-                key={label}
-                className={`step-item ${step === index + 1 ? "current" : ""} ${step > index + 1 ? "done" : ""}`}
-              >
-                <span>
-                  {step > index + 1 ? (
-                    <Icon name="check" size={14} />
-                  ) : (
-                    `0${index + 1}`
-                  )}
-                </span>
-                <small>{label}</small>
-              </div>
-            ))}
+  // ==========================================
+  // Success Result View
+  // ==========================================
+  if (flow.step === "success" && flow.completedTransfer) {
+    const t = flow.completedTransfer;
+    return (
+      <div className="max-w-md mx-auto py-10 px-4">
+        <div className="bg-paper border border-line rounded-2xl p-6 sm:p-8 text-center shadow-subtle">
+          <div className="w-12 h-12 bg-ink text-inverse-text rounded-full flex items-center justify-center mx-auto mb-5">
+            <Icon name="check" size={22} />
           </div>
-          <section className="form-card send-flow-card">
-            <div className="form-step-heading">
-              <span className="step-number">0{step}</span>
-              <div>
-                <h2>
-                  {
-                    [
-                      "Who are you sending to?",
-                      "Enter an amount",
-                      "Choose a payout method",
-                      "Enter receiver details",
-                      "Review transfer",
-                    ][step - 1]
-                  }
-                </h2>
-                <p>
-                  {
-                    [
-                      "Select someone saved or add a new receiver.",
-                      "Choose the currency and amount to send.",
-                      "Pick how the receiver should get the funds.",
-                      "Add the receiving details for this destination.",
-                      "Confirm the recipient and transfer breakdown.",
-                    ][step - 1]
-                  }
-                </p>
-              </div>
+
+          <h2 className="text-2xl font-heading font-bold text-ink mb-1">
+            Payment sent
+          </h2>
+          <p className="text-muted text-sm mb-6">
+            {formatAmount(t.recipientAmount || 0)} {t.recipientCurrency} is on its way to{" "}
+            <strong className="text-ink font-semibold">{t.name}</strong>.
+          </p>
+
+          <div className="bg-soft border border-line rounded-xl p-4 text-left text-xs space-y-2.5 mb-6">
+            <div className="flex justify-between">
+              <span className="text-muted">Amount sent</span>
+              <span className="text-ink font-medium">
+                {formatAmount(t.amount)} {t.currency}
+              </span>
             </div>
-            {step === 1 && (
-              <div className="send-recipient-stage">
-                <button
-                  className="button button-secondary send-add-recipient"
-                  onClick={startNewRecipient}
-                >
-                  <Icon name="plus" size={17} /> Add a new receiver
-                </button>
-                <label className="search-field send-recipient-search">
-                  <Icon name="search" />
-                  <input
-                    value={recipientSearch}
-                    onChange={(event) => setRecipientSearch(event.target.value)}
-                    placeholder="Search by name, account, or bank"
-                  />
-                </label>
-                {addingRecipient && (
-                  <div className="send-new-recipient">
-                    <div className="send-new-recipient-heading">
-                      <strong>New receiver</strong>
-                      <button
-                        className="text-button"
-                        onClick={() => setAddingRecipient(false)}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                    <div className="send-new-recipient-fields">
-                      <label>
-                        Receiver name
-                        <input
-                          value={newName}
-                          onChange={(event) => setNewName(event.target.value)}
-                          placeholder="Full name or business name"
-                        />
-                      </label>
-                      <div className="country-field">
-                        <span className="field-label">Destination country</span>
-                        <CountrySelect
-                          value={country}
-                          onChange={(nextCountry) => {
-                            setCountry(nextCountry);
-                            setProvider(
-                              payoutProviders(nextCountry, method)[0] || "",
-                            );
-                          }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-                <div className="send-saved-heading">
-                  <h3>Saved recipients</h3>
-                  <span>{visibleRecipients.length} saved</span>
-                </div>
-                <div className="send-recipient-list">
-                  {visibleRecipients.map((recipient) => (
-                    <button
-                      key={recipient.id}
-                      className={`send-recipient-row ${recipientId === String(recipient.id) ? "selected" : ""}`}
-                      onClick={() => chooseRecipient(recipient)}
-                      aria-pressed={recipientId === String(recipient.id)}
-                    >
-                      <span className="avatar avatar-soft">
-                        {recipient.initials}
-                      </span>
-                      <span className="send-recipient-copy">
-                        <strong>{recipient.name}</strong>
-                        <small>
-                          <CountryBadge country={recipient.country} />{" "}
-                          <span>·</span>{" "}
-                          {recipient.provider || recipient.method}
-                        </small>
-                      </span>
-                      <span className="send-recipient-account">
-                        {recipient.account || "New receiver"}
-                      </span>
-                      <span className="send-radio" />
-                    </button>
-                  ))}
-                  {visibleRecipients.length === 0 && !addingRecipient && (
-                    <div className="send-empty-recipients">
-                      No saved recipients match. Add a new receiver to continue.
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-            {step === 2 && (
-              <div className="send-amount-stage">
-                <div className="send-field-block">
-                  <label htmlFor="send-currency">You send</label>
-                  <div className="send-currency-input">
-                    <span className="send-currency-select">
-                      <CountryFlag
-                        code={sourceCurrencyFlags[sendCurrency]}
-                        country={sendCurrency}
-                      />
-                      <select
-                        id="send-currency"
-                        value={sendCurrency}
-                        onChange={(event) =>
-                          setSendCurrency(event.target.value)
-                        }
-                      >
-                        <option value="USD">USD · US Dollar</option>
-                        <option value="GBP">GBP · British Pound</option>
-                        <option value="EUR">EUR · Euro</option>
-                        <option value="NGN">NGN · Nigerian Naira</option>
-                      </select>
-                      <Icon name="chevron" size={16} />
-                    </span>
-                    <input
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      value={amount}
-                      onChange={(event) => setAmount(event.target.value)}
-                      placeholder="0.00"
-                      aria-label="Amount to send"
-                    />
-                  </div>
-                  <div className="send-balance">
-                    <span>Demo available balance</span>
-                    <strong>USD 4,250.00</strong>
-                  </div>
-                </div>
-                <div className="send-field-block">
-                  <label>Recipient gets · {destinationCurrency}</label>
-                  <div className="send-currency-input send-currency-output">
-                    <span className="send-currency-select">
-                      <CountryFlag
-                        code={countryFlag(country)}
-                        country={country}
-                      />
-                      <strong>{destinationCurrency}</strong>
-                    </span>
-                    <output>
-                      {receiveRate
-                        ? recipientAmount
-                          ? recipientAmount.toLocaleString(undefined, {
-                              maximumFractionDigits: 2,
-                            })
-                          : "0.00"
-                        : "Unavailable in demo"}
-                    </output>
-                  </div>
-                  <small className="send-inline-note">
-                    Estimate updates when you enter an amount. Rates and fees
-                    are simulated.
-                  </small>
-                </div>
-              </div>
-            )}
-            {step === 3 && (
-              <div className="send-method-stage">
-                {[
-                  {
-                    title: "Bank account",
-                    note: "Send to a local bank account",
-                    icon: "building",
-                    value: "Bank transfer",
-                  },
-                  {
-                    title: "Stablecoin",
-                    note: "Send a supported digital asset",
-                    icon: "card",
-                    value: "Stablecoin",
-                    badge: "Demo",
-                  },
-                  {
-                    title: "Mobile money",
-                    note: "Send to a mobile wallet",
-                    icon: "send",
-                    value: "Mobile money",
-                  },
-                  {
-                    title: "Recipient tag",
-                    note: "Send using a Settle tag",
-                    icon: "user",
-                    value: "Recipient tag",
-                    badge: "Demo",
-                  },
-                ].map((option) => (
-                  <button
-                    key={option.value}
-                    className={`send-method-card ${method === option.value || (option.value === "Mobile money" && method === "M-Pesa") ? "selected" : ""}`}
-                    onClick={() => updateMethod(option.value)}
-                  >
-                    <span className="send-method-icon">
-                      <Icon name={option.icon} size={20} />
-                    </span>
-                    <span>
-                      <strong>{option.title}</strong>
-                      <small>{option.note}</small>
-                    </span>
-                    {option.badge && <em>{option.badge}</em>}
-                    <i className="send-radio" />
-                  </button>
-                ))}
-              </div>
-            )}
-            {step === 4 && (
-              <div className="send-details-stage">
-                <div className="send-detail-context">
-                  <CountryBadge country={country} />
-                  <span>Receiving currency</span>
-                  <strong>{destinationCurrency}</strong>
-                </div>
-                {(method === "Bank transfer" ||
-                  method === "Mobile money" ||
-                  method === "M-Pesa") && (
-                  <label className="send-full-field">
-                    <span>
-                      {method === "Mobile money" || method === "M-Pesa"
-                        ? "Mobile money provider"
-                        : "Receiver bank"}
-                    </span>
-                    <select
-                      value={provider}
-                      onChange={(event) => {
-                        setProvider(event.target.value);
-                        setNewAccount("");
-                      }}
-                    >
-                      <option value="">
-                        Select{" "}
-                        {method === "Mobile money" || method === "M-Pesa"
-                          ? "provider"
-                          : "bank"}
-                      </option>
-                      {currentProviders.map((option) => (
-                        <option key={option}>{option}</option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-                {method === "Bank transfer" && (
-                  <label className="send-full-field">
-                    <span>Receiver type</span>
-                    <select
-                      value={receiverType}
-                      onChange={(event) => setReceiverType(event.target.value)}
-                    >
-                      <option>Personal</option>
-                      <option>Business</option>
-                    </select>
-                  </label>
-                )}
-                {method === "Stablecoin" && (
-                  <label className="send-full-field">
-                    <span>Asset</span>
-                    <select
-                      value={asset}
-                      onChange={(event) => setAsset(event.target.value)}
-                    >
-                      <option>USDC</option>
-                      <option>USDT</option>
-                    </select>
-                  </label>
-                )}
-                <label className="send-full-field">
-                  <span>
-                    {method === "Mobile money" || method === "M-Pesa"
-                      ? "Phone number"
-                      : method === "Stablecoin"
-                        ? "Wallet address"
-                        : method === "Recipient tag"
-                          ? "Recipient tag"
-                          : "Account number"}
-                  </span>
-                  <input
-                    inputMode={
-                      method === "Mobile money" || method === "M-Pesa"
-                        ? "tel"
-                        : "text"
-                    }
-                    value={newAccount}
-                    onChange={(event) => {
-                      setNewAccount(event.target.value);
-                      if (!selected) setNewName("");
-                    }}
-                    placeholder={
-                      method === "Mobile money" || method === "M-Pesa"
-                        ? `e.g. ${callingCodes[country] || "country code"} 712 345 678`
-                        : method === "Stablecoin"
-                          ? "Paste a wallet address"
-                          : method === "Recipient tag"
-                            ? "@recipient"
-                            : "Enter the bank account number"
-                    }
-                  />
-                </label>
-                {resolvedName && (
-                  <div className="demo-name-preview">
-                    <span className="demo-name-icon">
-                      <Icon name="check" size={16} />
-                    </span>
-                    <div>
-                      <small>
-                        {selected
-                          ? "SAVED RECIPIENT"
-                          : method === "Stablecoin"
-                            ? "DEMO WALLET PREVIEW"
-                            : method === "Recipient tag"
-                              ? "DEMO TAG PREVIEW"
-                              : "DEMO ACCOUNT MATCH"}
-                      </small>
-                      <strong>{resolvedName}</strong>
-                      <span>
-                        {selected
-                          ? `${provider || selected.provider || method} · ${country}`
-                          : "Prototype preview only · details are not verified"}
-                      </span>
-                    </div>
-                  </div>
-                )}
-                {!selected &&
-                  (method === "Bank transfer" || method === "Mobile money") &&
-                  lookupReady &&
-                  newName &&
-                  resolvedName &&
-                  newName.toLowerCase() !== resolvedName.toLowerCase() && (
-                    <div className="send-match-note">
-                      The demo account name differs from the name entered.
-                      Review the match before continuing.
-                    </div>
-                  )}
-                {!selected &&
-                  (method === "Bank transfer" || method === "Mobile money") &&
-                  !lookupReady && (
-                    <div className="send-inline-note">
-                      Enter{" "}
-                      {method === "Mobile money"
-                        ? "a phone number"
-                        : "an account number"}{" "}
-                      to show the demo account name.
-                    </div>
-                  )}
-                {(method === "Stablecoin" || method === "Recipient tag") && (
-                  <div className="send-inline-note">
-                    This payout option is a prototype preview. No wallet
-                    transfer or tag payment will be sent.
-                  </div>
-                )}
-                {!selected && (
-                  <label className="send-save-recipient">
-                    <input
-                      type="checkbox"
-                      checked={saveRecipient}
-                      onChange={(event) =>
-                        setSaveRecipient(event.target.checked)
-                      }
-                    />{" "}
-                    Save this receiver for next time
-                  </label>
-                )}
-              </div>
-            )}
-            {step === 5 && (
-              <div className="send-review-stage">
-                <div className="send-review-hero">
-                  <div>
-                    <small>YOU SEND</small>
-                    <strong>
-                      {Number(amount || 0).toFixed(2)} {sendCurrency}
-                    </strong>
-                  </div>
-                  <span>
-                    <CountryFlag
-                      code={sourceCurrencyFlags[sendCurrency]}
-                      country={sendCurrency}
-                    />
-                    <Icon name="arrow" size={18} />
-                    <CountryFlag
-                      code={countryFlag(country)}
-                      country={country}
-                    />
-                  </span>
-                  <div>
-                    <small>RECIPIENT GETS</small>
-                    <strong>
-                      {receiveRate
-                        ? `${recipientAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${destinationCurrency}`
-                        : "Rate unavailable in demo"}
-                    </strong>
-                  </div>
-                </div>
-                <label className="send-full-field send-description">
-                  <span>
-                    Description <em>Required</em>
-                  </span>
-                  <input
-                    value={description}
-                    onChange={(event) => setDescription(event.target.value)}
-                    placeholder="What is this transfer for?"
-                  />
-                </label>
-                <div className="send-review-section">
-                  <h3>Receiver details</h3>
-                  <dl>
-                    <div>
-                      <dt>Account name</dt>
-                      <dd>{resolvedName || "Demo recipient"}</dd>
-                    </div>
-                    <div>
-                      <dt>
-                        {method === "Mobile money" || method === "M-Pesa"
-                          ? "Phone number"
-                          : method === "Stablecoin"
-                            ? "Wallet address"
-                            : method === "Recipient tag"
-                              ? "Recipient tag"
-                              : "Account number"}
-                      </dt>
-                      <dd>{displayAccount || newAccount}</dd>
-                    </div>
-                    <div>
-                      <dt>
-                        {method === "Bank transfer"
-                          ? "Bank name"
-                          : method === "Mobile money" || method === "M-Pesa"
-                            ? "Provider"
-                            : method === "Stablecoin"
-                              ? "Asset"
-                              : "Payment method"}
-                      </dt>
-                      <dd>
-                        {method === "Stablecoin"
-                          ? asset
-                          : method === "Recipient tag"
-                            ? "Settle tag"
-                            : provider}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Destination country</dt>
-                      <dd>
-                        <CountryBadge country={country} />
-                      </dd>
-                    </div>
-                  </dl>
-                </div>
-                <div className="send-review-section">
-                  <h3>Transfer details</h3>
-                  <dl>
-                    <div>
-                      <dt>You send</dt>
-                      <dd>
-                        {Number(amount || 0).toFixed(2)} {sendCurrency}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>
-                        Total fee <em>DEMO</em>
-                      </dt>
-                      <dd>
-                        {feeAmount.toFixed(2)} {sendCurrency}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Amount converted</dt>
-                      <dd>{amountToConvert.toFixed(2)} USD</dd>
-                    </div>
-                    <div>
-                      <dt>Recipient gets</dt>
-                      <dd>
-                        {receiveRate
-                          ? `${recipientAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${destinationCurrency}`
-                          : "Rate unavailable in demo"}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Exchange rate</dt>
-                      <dd>
-                        {receiveRate
-                          ? `1 ${sendCurrency} = ${exchangeRate.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${destinationCurrency}`
-                          : "Rate unavailable in demo"}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Estimated arrival</dt>
-                      <dd>Within minutes</dd>
-                    </div>
-                    <div>
-                      <dt>Send with</dt>
-                      <dd>
-                        {method === "Stablecoin"
-                          ? asset
-                          : method === "Recipient tag"
-                            ? "Settle tag"
-                            : provider}{" "}
-                        <button
-                          className="text-button"
-                          onClick={() => setStep(3)}
-                        >
-                          Change
-                        </button>
-                      </dd>
-                    </div>
-                  </dl>
-                </div>
-                <div className="disclaimer">
-                  <Icon name="shield" size={17} />
-                  <span>
-                    Prototype only. Rates, fees, and payout status are
-                    simulated. No money will be moved.
-                  </span>
-                </div>
-              </div>
-            )}
-            {error && <div className="notice error-notice">{error}</div>}
-            <div className="form-actions">
-              {step > 1 && (
-                <button
-                  className="button button-quiet"
-                  onClick={() => {
-                    setStep(step - 1);
-                    setError("");
-                  }}
-                >
-                  ← Back
-                </button>
-              )}
+            <div className="flex justify-between">
+              <span className="text-muted">Fee (1%)</span>
+              <span className="text-ink font-medium">
+                {formatAmount(t.feeAmount || 0)} {t.currency}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted">Recipient gets</span>
+              <span className="text-ink font-semibold">
+                {formatAmount(t.recipientAmount || 0)} {t.recipientCurrency}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted">Destination bank</span>
+              <span className="text-ink font-medium">{t.provider}</span>
+            </div>
+            <div className="flex justify-between pt-2 border-t border-line">
+              <span className="text-muted">Reference</span>
               <button
-                className="button button-primary"
-                onClick={() => (step === 5 ? finish() : continueFlow())}
+                type="button"
+                className="font-mono text-ink flex items-center gap-1 hover:underline"
+                onClick={() => copyRef(t.id)}
               >
-                {step === 5 ? "Confirm demo transfer" : "Continue"}{" "}
-                <span>→</span>
+                <span>{t.id}</span>
+                <Icon name={copiedRef ? "check" : "copy"} size={12} />
               </button>
             </div>
-          </section>
+          </div>
+
+          <div className="space-y-2">
+            <button
+              type="button"
+              className="button button-primary w-full h-11 text-sm font-medium"
+              onClick={() => setPage("Transactions")}
+            >
+              View in transactions
+            </button>
+            <button
+              type="button"
+              className="button button-quiet w-full h-11 text-sm text-muted hover:text-ink"
+              onClick={handleReset}
+            >
+              Send another payment
+            </button>
+          </div>
         </div>
-        <aside className="transfer-aside send-flow-aside">
-          <span className="aside-kicker">
-            <i /> TRANSFER PREVIEW
-          </span>
-          <div className="route-preview">
-            <div className="route-cities">
-              <span className="city-dot city-start" />
-              <div className="dotted-route" />
-              <span className="city-dot city-end" />
-            </div>
-            <div className="route-labels">
-              <div>
-                <strong>Your account</strong>
-                <small>Sending from</small>
-              </div>
-              <div>
-                <strong>
-                  {selected?.name || newName || "Choose receiver"}
-                </strong>
-                <small>{country || "Destination"}</small>
-              </div>
-            </div>
-          </div>
-          <div className="aside-separator" />
-          <div className="aside-line">
-            <span>You send</span>
-            <strong>
-              {Number(amount || 0).toFixed(2)} {sendCurrency}
-            </strong>
-          </div>
-          <div className="aside-line">
-            <span>Transfer fee</span>
-            <strong>
-              {feeAmount.toFixed(2)} {sendCurrency}{" "}
-              <i className="demo-pill">DEMO</i>
-            </strong>
-          </div>
-          <div className="aside-line">
-            <span>Recipient gets</span>
-            <strong>
-              {receiveRate
-                ? `${recipientAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${destinationCurrency}`
-                : "Rate unavailable in demo"}
-            </strong>
-          </div>
-          <div className="aside-help">
-            <Icon name="shield" size={17} />
-            <span>
-              <strong>
-                {method === "Stablecoin" || method === "Recipient tag"
-                  ? "Demo route"
-                  : provider || "Bank or mobile money"}
-              </strong>
-              <small>Review every detail before confirming.</small>
-            </span>
-          </div>
-          <div className="prototype-note">
-            Illustrative preview only. Nothing is sent or charged.
-          </div>
-        </aside>
       </div>
-    </>
+    );
+  }
+
+  // ==========================================
+  // Failed Result View
+  // ==========================================
+  if (flow.step === "failed") {
+    return (
+      <div className="max-w-md mx-auto py-10 px-4">
+        <div className="bg-paper border border-line rounded-2xl p-6 sm:p-8 text-center shadow-subtle">
+          <div className="w-12 h-12 bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 rounded-full flex items-center justify-center mx-auto mb-5 border border-rose-200 dark:border-rose-900">
+            <Icon name="x" size={22} />
+          </div>
+
+          <h2 className="text-2xl font-heading font-bold text-ink mb-2">
+            Transfer failed
+          </h2>
+          <p className="text-muted text-sm mb-6">
+            {flow.error || "The partner clearing rail timed out. Your account was not charged."}
+          </p>
+
+          <div className="space-y-2">
+            <button
+              type="button"
+              className="button button-primary w-full h-11 text-sm font-medium"
+              onClick={flow.retryTransfer}
+            >
+              Try again
+            </button>
+            <button
+              type="button"
+              className="button button-quiet w-full h-11 text-sm text-muted hover:text-ink"
+              onClick={handleBack}
+            >
+              Edit details
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // Main 3-Step Flow (from -> to -> review)
+  // ==========================================
+  return (
+    <div className={`${aside ? "max-w-5xl" : "max-w-xl"} mx-auto py-4 sm:py-8 px-4`}>
+      {/* Quiet, Minimal Header */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-heading font-bold text-ink tracking-tight">
+          Send money
+        </h1>
+      </div>
+
+      <div className={aside ? "grid grid-cols-1 lg:grid-cols-12 gap-6 items-start" : ""}>
+        <div className={aside ? "lg:col-span-8 min-w-0" : ""}>
+          {/* Minimal Progress Line (3 steps) */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between text-xs mb-2">
+              <span className="font-medium text-ink">
+                {flow.step === "from" && "1. Amount & Method"}
+                {flow.step === "to" && "2. Recipient"}
+                {flow.step === "review" && "3. Review"}
+              </span>
+              <span className="text-muted">
+                {flow.step === "from" && "Step 1 of 3"}
+                {flow.step === "to" && "Step 2 of 3"}
+                {flow.step === "review" && "Step 3 of 3"}
+              </span>
+            </div>
+            <div className="w-full bg-soft h-1 rounded-full overflow-hidden">
+              <div
+                className="bg-ink h-full transition-all duration-300"
+                style={{
+                  width:
+                    flow.step === "from"
+                      ? "33.3%"
+                      : flow.step === "to"
+                      ? "66.6%"
+                      : "100%",
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Main Focus Card */}
+          <div className="bg-paper border border-line rounded-2xl p-6 sm:p-8 shadow-subtle space-y-6">
+        {/* ========================================================= */}
+        {/* STEP 1: AMOUNT & PAYMENT METHOD                          */}
+        {/* ========================================================= */}
+        {flow.step === "from" && (
+          <div className="space-y-6">
+            {/* Amount & Currency Conversion Group */}
+            <div className="space-y-2">
+              {/* You Send Input */}
+              <div className="border border-line rounded-xl p-3.5 bg-paper hover:border-ink/40 focus-within:!border-ink transition-colors">
+                <span className="text-[11px] font-medium text-muted block mb-1">
+                  You send
+                </span>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="number"
+                    min="1"
+                    step="any"
+                    value={flow.amount}
+                    onChange={(e) => flow.setAmount(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full text-2xl sm:text-3xl font-heading font-semibold text-ink bg-transparent outline-none placeholder:text-subtle"
+                    autoFocus
+                  />
+                  <div className="flex items-center gap-1.5 pl-3 border-l border-line shrink-0">
+                    <CountryFlag
+                      code={
+                        SUPPORTED_SOURCE_CURRENCIES.find(
+                          (c) => c.code === flow.sendCurrency
+                        )?.flagCode || "us"
+                      }
+                      country={flow.sendCurrency}
+                    />
+                    <select
+                      value={flow.sendCurrency}
+                      onChange={(e) => flow.setSendCurrency(e.target.value)}
+                      className="send-currency-inline bg-transparent font-medium text-ink text-sm outline-none cursor-pointer"
+                      aria-label="Select sending currency"
+                    >
+                      {SUPPORTED_SOURCE_CURRENCIES.map((c) => (
+                        <option key={c.code} value={c.code}>
+                          {c.code}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Calm, Single-Line Rate & Fee Breakdown */}
+              <div className="flex items-center justify-between px-2 text-xs text-muted">
+                <span>
+                  Fee: <strong className="text-ink font-medium">1% ({formatAmount(flow.calculation.feeAmount)} {flow.sendCurrency})</strong>
+                </span>
+                <span>
+                  1 {flow.sendCurrency} = <strong className="text-ink font-medium">{formatAmount(flow.calculation.exchangeRate, 4)} {flow.targetCurrency}</strong>
+                </span>
+              </div>
+
+              {/* Recipient Receives Output */}
+              <div className="border border-line rounded-xl p-3.5 bg-soft">
+                <span className="text-[11px] font-medium text-muted block mb-1">
+                  Recipient receives
+                </span>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-2xl sm:text-3xl font-heading font-semibold text-ink">
+                    {formatAmount(flow.calculation.recipientReceives)}
+                  </div>
+                  <div className="flex items-center gap-1.5 pl-3 border-l border-line shrink-0 font-medium text-ink text-sm">
+                    <CountryFlag
+                      code={countryFlag(flow.targetCountry)}
+                      country={flow.targetCountry}
+                    />
+                    <span>{flow.targetCurrency}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Payment Method (Segmented Control) */}
+            <div className="pt-2">
+              <label className="text-xs font-semibold text-muted uppercase tracking-wider block mb-2.5">
+                Pay with
+              </label>
+
+              <div className="grid grid-cols-3 gap-1 p-1 bg-soft rounded-xl border border-line mb-4">
+                {[
+                  { key: "bank", label: "Bank account" },
+                  { key: "card", label: "Card" },
+                  { key: "mobile", label: "Mobile money" },
+                ].map((m) => {
+                  const isSel = flow.paymentMethod === m.key;
+                  return (
+                    <button
+                      key={m.key}
+                      type="button"
+                      className={`h-9 text-xs rounded-lg transition-all ${
+                        isSel
+                          ? "bg-paper text-ink font-semibold shadow-xs"
+                          : "text-muted hover:text-ink font-medium"
+                      }`}
+                      onClick={() => flow.setPaymentMethod(m.key as any)}
+                    >
+                      {m.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Conditional Method Inputs */}
+              {flow.paymentMethod === "bank" && (
+                <div className="border border-line rounded-xl p-3.5 bg-paper flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="w-8 h-8 rounded-full bg-soft flex items-center justify-center shrink-0 text-ink">
+                      <Icon name="building" size={15} />
+                    </span>
+                    <div className="min-w-0">
+                      <strong className="text-ink font-semibold block truncate">
+                        {flow.linkedBanks[0]?.bank || "Primary Linked Bank"}
+                      </strong>
+                    </div>
+                  </div>
+                  {flow.linkedBanks.length > 1 && (
+                    <select
+                      value={flow.linkedBankId}
+                      onChange={(e) => flow.setLinkedBankId(e.target.value)}
+                      className="bg-soft border border-line text-ink rounded-lg px-2 py-1 text-xs outline-none"
+                    >
+                      {flow.linkedBanks.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.account}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
+
+              {flow.paymentMethod === "card" && (
+                <div className="space-y-2.5">
+                  <input
+                    type="text"
+                    maxLength={19}
+                    placeholder="Card number (16 digits)"
+                    value={flow.cardData.number}
+                    onChange={(e) => {
+                      const v = e.target.value.replace(/\D/g, "").slice(0, 16);
+                      const fmt = v.match(/.{1,4}/g)?.join(" ") || v;
+                      flow.setCardData({ ...flow.cardData, number: fmt });
+                    }}
+                    className="w-full h-11 px-3.5 border border-line rounded-xl bg-paper text-ink text-sm outline-none focus:border-ink"
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      maxLength={5}
+                      placeholder="MM/YY"
+                      value={flow.cardData.expiry}
+                      onChange={(e) => {
+                        let v = e.target.value.replace(/\D/g, "").slice(0, 4);
+                        if (v.length >= 3) v = `${v.slice(0, 2)}/${v.slice(2)}`;
+                        flow.setCardData({ ...flow.cardData, expiry: v });
+                      }}
+                      className="w-full h-11 px-3.5 border border-line rounded-xl bg-paper text-ink text-sm outline-none focus:border-ink"
+                    />
+                    <input
+                      type="password"
+                      maxLength={4}
+                      placeholder="CVV"
+                      value={flow.cardData.cvv}
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/\D/g, "").slice(0, 4);
+                        flow.setCardData({ ...flow.cardData, cvv: v });
+                      }}
+                      className="w-full h-11 px-3.5 border border-line rounded-xl bg-paper text-ink text-sm outline-none focus:border-ink"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {flow.paymentMethod === "mobile" && (
+                <div>
+                  <input
+                    type="tel"
+                    placeholder="Sender phone number (for instant authorization prompt)"
+                    value={flow.senderPhone}
+                    onChange={(e) => flow.setSenderPhone(e.target.value)}
+                    className="w-full h-11 px-3.5 border border-line rounded-xl bg-paper text-ink text-sm outline-none focus:border-ink"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Error Message */}
+            {flow.error && (
+              <p className="text-xs text-rose-600 dark:text-rose-400 font-medium">
+                {flow.error}
+              </p>
+            )}
+
+            {/* Primary Action Button */}
+            <div className="pt-2">
+              <button
+                type="button"
+                className="button button-primary w-full h-12 text-sm font-semibold rounded-xl"
+                onClick={flow.goToTo}
+                disabled={!flow.isFromValid}
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* STEP 2: RECIPIENT DETAILS                                */}
+        {/* ========================================================= */}
+        {flow.step === "to" && (
+          <div className="space-y-5">
+            {/* Tab switch if user has saved recipients */}
+            {recipients.length > 0 && (
+              <div className="grid grid-cols-2 gap-1 p-1 bg-soft rounded-xl border border-line">
+                <button
+                  type="button"
+                  className={`h-9 text-xs rounded-lg transition-all ${
+                    recipientTab === "saved"
+                      ? "bg-paper text-ink font-semibold shadow-xs"
+                      : "text-muted hover:text-ink font-medium"
+                  }`}
+                  onClick={() => setRecipientTab("saved")}
+                >
+                  Saved recipients ({recipients.length})
+                </button>
+                <button
+                  type="button"
+                  className={`h-9 text-xs rounded-lg transition-all ${
+                    recipientTab === "new"
+                      ? "bg-paper text-ink font-semibold shadow-xs"
+                      : "text-muted hover:text-ink font-medium"
+                  }`}
+                  onClick={() => {
+                    setRecipientTab("new");
+                    flow.clearSelectedBeneficiary();
+                  }}
+                >
+                  New recipient
+                </button>
+              </div>
+            )}
+
+            {/* Pick from Saved Recipients */}
+            {recipientTab === "saved" && recipients.length > 0 ? (
+              <div className="space-y-3">
+                <div className="relative">
+                  <Icon
+                    name="search"
+                    size={14}
+                    className="absolute left-3 top-3 text-muted"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Search by name, bank, or account..."
+                    value={recipientSearch}
+                    onChange={(e) => setRecipientSearch(e.target.value)}
+                    className="w-full h-9 pl-8 pr-3 text-xs border border-line rounded-lg bg-paper text-ink outline-none focus:border-ink"
+                  />
+                </div>
+
+                <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                  {filteredRecipients.map((r) => {
+                    const isSel = flow.selectedBeneficiaryId === r.id;
+                    return (
+                      <button
+                        key={r.id}
+                        type="button"
+                        className={`w-full p-3 rounded-xl border text-left flex items-center justify-between gap-3 transition-colors ${
+                          isSel
+                            ? "border-ink bg-soft"
+                            : "border-line bg-paper hover:bg-soft"
+                        }`}
+                        onClick={() => flow.selectBeneficiary(r)}
+                      >
+                        <div className="min-w-0">
+                          <strong className="text-xs text-ink block truncate font-semibold">
+                            {r.name}
+                          </strong>
+                          <span className="text-[11px] text-muted block truncate">
+                            {r.country} · {r.provider || r.method}
+                          </span>
+                        </div>
+                        <span className="text-xs font-mono text-muted shrink-0">
+                          {r.account}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              /* Enter New Recipient */
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-medium text-muted block mb-1.5">
+                    Destination country
+                  </label>
+                  <CountrySelect
+                    value={flow.targetCountry}
+                    onChange={flow.setTargetCountry}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-muted block mb-1.5">
+                    Destination bank
+                  </label>
+                  <select
+                    value={flow.bankName}
+                    onChange={(e) => flow.setBankName(e.target.value)}
+                    className="w-full h-11 pl-3.5 pr-10 border border-line rounded-xl bg-paper text-ink text-sm outline-none focus:border-ink font-medium cursor-pointer"
+                  >
+                    {(CORRIDOR_BANKS[flow.targetCountry] || CORRIDOR_BANKS.Nigeria).map(
+                      (b) => (
+                        <option key={b} value={b}>
+                          {b}
+                        </option>
+                      )
+                    )}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-muted block mb-1.5">
+                    Account number
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="Enter account number (min. 8 digits)"
+                    value={flow.accountNumber}
+                    onChange={(e) => flow.setAccountNumber(e.target.value)}
+                    className="w-full h-11 px-3.5 border border-line rounded-xl bg-paper text-ink font-mono text-sm outline-none focus:border-ink"
+                  />
+
+                  {/* Clean, Non-intrusive Name Verification Indicator */}
+                  {flow.isResolvingName && (
+                    <p className="text-xs text-muted flex items-center gap-1.5 mt-2">
+                      <span className="w-3 h-3 rounded-full border border-muted border-t-transparent animate-spin inline-block" />
+                      <span>Verifying account name...</span>
+                    </p>
+                  )}
+
+                  {!flow.isResolvingName && flow.accountName && (
+                    <p className="text-xs text-ink font-medium flex items-center gap-1.5 mt-2">
+                      <Icon name="check" size={14} className="text-emerald-600" />
+                      <span>Verified: <strong>{flow.accountName}</strong></span>
+                    </p>
+                  )}
+                </div>
+
+                {/* Save Recipient Checkbox */}
+                {!flow.selectedBeneficiaryId && flow.accountName && (
+                  <label className="flex items-center gap-2 text-xs text-muted hover:text-ink cursor-pointer pt-1">
+                    <input
+                      type="checkbox"
+                      checked={flow.saveBeneficiary}
+                      onChange={(e) => flow.setSaveBeneficiary(e.target.checked)}
+                      className="w-3.5 h-3.5 rounded text-ink"
+                    />
+                    <span>Save recipient for future transfers</span>
+                  </label>
+                )}
+              </div>
+            )}
+
+            {/* Error Notice */}
+            {flow.error && (
+              <p className="text-xs text-rose-600 dark:text-rose-400 font-medium">
+                {flow.error}
+              </p>
+            )}
+
+            {/* Navigation Actions */}
+            <div className="flex items-center justify-between pt-4 border-t border-line">
+              <button
+                type="button"
+                className="button button-quiet text-xs h-10 px-4 text-muted hover:text-ink"
+                onClick={flow.goBack}
+              >
+                ← Back
+              </button>
+              <button
+                type="button"
+                className="button button-primary h-11 px-6 text-sm font-semibold rounded-xl"
+                onClick={flow.goToReview}
+                disabled={!flow.isToValid}
+              >
+                Continue to review
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* STEP 3: REVIEW & CONFIRM (with PIN entry under Reference) */}
+        {/* ========================================================= */}
+        {flow.step === "review" && (
+          <div className="space-y-6">
+            {/* Hero Conversion Summary */}
+            <div className="text-center py-3 border-b border-line">
+              <span className="text-[11px] font-semibold text-muted uppercase tracking-wider block mb-1">
+                You are sending
+              </span>
+              <div className="text-2xl sm:text-3xl font-heading font-bold text-ink">
+                {formatAmount(flow.calculation.amount)} {flow.sendCurrency}
+                <span className="text-muted mx-2 font-normal">→</span>
+                {formatAmount(flow.calculation.recipientReceives)} {flow.targetCurrency}
+              </div>
+            </div>
+
+            {/* Clean Line-Item Review */}
+            <div className="text-xs divide-y divide-line">
+              <div className="flex justify-between py-2.5">
+                <span className="text-muted">Recipient</span>
+                <strong className="text-ink font-semibold">{flow.accountName}</strong>
+              </div>
+              <div className="flex justify-between py-2.5">
+                <span className="text-muted">Bank & account</span>
+                <span className="text-ink font-medium">
+                  {flow.bankName} · {flow.accountNumber}
+                </span>
+              </div>
+              <div className="flex justify-between py-2.5">
+                <span className="text-muted">Clearing protocol</span>
+                <span className="text-ink font-medium">
+                  {flow.clearingRail.settlementRailProtocol}
+                </span>
+              </div>
+              <div className="flex justify-between py-2.5">
+                <span className="text-muted">Guaranteed rate</span>
+                <span className="text-ink font-medium">
+                  1 {flow.sendCurrency} = {formatAmount(flow.calculation.exchangeRate, 4)} {flow.targetCurrency}
+                </span>
+              </div>
+              <div className="flex justify-between py-2.5">
+                <span className="text-muted">Transfer fee (1%)</span>
+                <span className="text-ink font-medium">
+                  {formatAmount(flow.calculation.feeAmount)} {flow.sendCurrency}
+                </span>
+              </div>
+              <div className="flex justify-between py-2.5 font-bold text-ink">
+                <span>Total debited</span>
+                <span>
+                  {formatAmount(flow.calculation.totalDebit)} {flow.sendCurrency}
+                </span>
+              </div>
+            </div>
+
+            {/* Reference Section */}
+            <div>
+              <label className="text-[11px] font-medium text-muted block mb-1">
+                Reference
+              </label>
+              <input
+                type="text"
+                placeholder="Add a note or reference"
+                value={flow.description}
+                onChange={(e) => flow.setDescription(e.target.value)}
+                className="w-full h-10 px-3.5 border border-line rounded-xl bg-paper text-ink text-xs outline-none focus:border-ink"
+              />
+            </div>
+
+            {/* Security PIN Section (Under Reference, not inside an input, big asterisks like ****) */}
+            <div className="pt-2">
+              <label className="text-[11px] font-semibold text-muted uppercase tracking-wider block text-center mb-2.5">
+                Security PIN
+              </label>
+
+              {/* Big Asterisk Display: **** */}
+              <div
+                className="flex items-center justify-center gap-3 py-1 cursor-pointer select-none"
+                onClick={() => pinInputRef.current?.focus()}
+                role="button"
+                tabIndex={0}
+                aria-label="Enter 4-digit PIN"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    pinInputRef.current?.focus();
+                  }
+                }}
+              >
+                {[0, 1, 2, 3].map((idx) => {
+                  const isFilled = pin.length > idx;
+                  const isCurrent = pin.length === idx;
+                  return (
+                    <div
+                      key={idx}
+                      className={`w-12 h-14 rounded-xl border flex items-center justify-center transition-all ${
+                        isFilled
+                          ? "border-ink bg-paper text-ink shadow-xs"
+                          : isCurrent
+                          ? "border-ink ring-1 ring-ink bg-paper"
+                          : "border-line bg-soft text-subtle"
+                      }`}
+                    >
+                      <span className="text-3xl sm:text-4xl font-heading font-bold select-none leading-none">
+                        {isFilled ? "*" : ""}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Hidden real input for physical/touch keyboard entry */}
+              <input
+                ref={pinInputRef}
+                type="password"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={4}
+                value={pin}
+                onChange={(e) => {
+                  const clean = e.target.value.replace(/\D/g, "").slice(0, 4);
+                  setPin(clean);
+                  if (clean.length === 4) setPinError("");
+                }}
+                className="sr-only"
+                autoFocus
+              />
+
+              {/* Minimal On-Screen Numeric Keypad */}
+              <div className="max-w-[210px] mx-auto grid grid-cols-3 gap-1.5 pt-3">
+                {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((num) => (
+                  <button
+                    key={num}
+                    type="button"
+                    className="h-10 text-sm font-semibold rounded-lg border border-line bg-paper hover:bg-soft text-ink active:scale-95 transition-all"
+                    onClick={() => {
+                      if (pin.length < 4) {
+                        const next = pin + num;
+                        setPin(next);
+                        if (next.length === 4) setPinError("");
+                      }
+                    }}
+                  >
+                    {num}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="h-10 text-xs text-muted hover:text-ink font-medium rounded-lg transition-colors"
+                  onClick={() => setPin("")}
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  className="h-10 text-sm font-semibold rounded-lg border border-line bg-paper hover:bg-soft text-ink active:scale-95 transition-all"
+                  onClick={() => {
+                    if (pin.length < 4) {
+                      const next = pin + "0";
+                      setPin(next);
+                      if (next.length === 4) setPinError("");
+                    }
+                  }}
+                >
+                  0
+                </button>
+                <button
+                  type="button"
+                  className="h-10 flex items-center justify-center text-muted hover:text-ink rounded-lg transition-colors"
+                  onClick={() => setPin((prev) => prev.slice(0, -1))}
+                  aria-label="Delete digit"
+                >
+                  <Icon name="close" size={14} />
+                </button>
+              </div>
+
+              {pinError && (
+                <p className="text-xs text-rose-600 dark:text-rose-400 font-medium text-center mt-2.5">
+                  {pinError}
+                </p>
+              )}
+            </div>
+
+            {/* Navigation Actions */}
+            <div className="flex items-center justify-between pt-4 border-t border-line">
+              <button
+                type="button"
+                className="button button-quiet text-xs h-10 px-4 text-muted hover:text-ink"
+                onClick={handleBack}
+              >
+                ← Back
+              </button>
+              <button
+                type="button"
+                className="button button-primary h-12 px-6 text-sm font-semibold rounded-xl"
+                onClick={handleConfirmTransfer}
+              >
+                Send {formatAmount(flow.calculation.totalDebit)} {flow.sendCurrency}
+              </button>
+            </div>
+          </div>
+        )}
+          </div>
+        </div>
+
+        {aside && (
+          <aside className="lg:col-span-4 min-w-0 lg:sticky lg:top-6 lg:mt-[52px]">
+            {aside}
+          </aside>
+        )}
+      </div>
+    </div>
   );
-}
+}
