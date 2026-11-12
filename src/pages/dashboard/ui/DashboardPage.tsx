@@ -44,22 +44,6 @@ export function DashboardPage({
         </h1>
       </div>
 
-      {/* Two Prominent Quick Action Buttons */}
-      <div className="grid grid-cols-2 gap-3 mb-6">
-        <QuickAction
-          icon="send"
-          title="Send money"
-          variant="primary"
-          onClick={() => setPage("Send money")}
-        />
-        <QuickAction
-          icon="wallet"
-          title="Wallet"
-          variant="secondary"
-          onClick={() => setPage("Wallet")}
-        />
-      </div>
-
       {/* Minimal Metric Grid */}
       <div className="stat-grid grid grid-cols-2 lg:grid-cols-4 gap-0 border border-line bg-paper rounded-2xl overflow-hidden">
         <StatCard
@@ -83,6 +67,24 @@ export function DashboardPage({
           icon="shield"
         />
       </div>
+
+      {/* Two Prominent Quick Action Buttons */}
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        <QuickAction
+          icon="send"
+          title="Send money"
+          variant="primary"
+          onClick={() => setPage("Send money")}
+        />
+        <QuickAction
+          icon="wallet"
+          title="Wallet"
+          variant="secondary"
+          onClick={() => setPage("Wallet")}
+        />
+      </div>
+
+
 
       <RateMarquee />
 

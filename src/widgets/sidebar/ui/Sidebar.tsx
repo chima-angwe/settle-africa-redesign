@@ -105,57 +105,81 @@ export function Sidebar({
           </span>
         </button>
 
-        <nav className="main-nav mt-5 space-y-4" aria-label="Main navigation">
+        <nav className="sidebar-nav main-nav mt-5 space-y-4" aria-label="Main navigation">
           {sections.map((section, idx) => (
             <div
               key={section.title}
               className={idx > 0 ? "pt-3 border-t border-[#242424]" : ""}
             >
-              <span className="block px-3 mb-1.5 text-[9px] font-bold tracking-[1.6px] text-[#747474] uppercase">
+              <span className="block px-3 mb-1.5 text-[9px] font-bold tracking-[1.6px] text-white/70 uppercase">
                 {section.title}
               </span>
               <div className="grid gap-1">
-                {section.items.map((item) => (
-                  <button
-                    type="button"
-                    key={item.page}
-                    className={`nav-item !min-h-[42px] ${page === item.page ? "active" : ""}`}
-                    onClick={() => handleNavClick(item.page)}
-                  >
-                    <Icon name={item.icon} />
-                    <span>{item.label}</span>
-                    {page === item.page && <i className="nav-dot" />}
-                  </button>
-                ))}
+                {section.items.map((item) => {
+                  const isActive = page === item.page;
+                  return (
+                    <button
+                      type="button"
+                      key={item.page}
+                      className={`nav-item !min-h-[42px] ${
+                        isActive
+                          ? "active !bg-white !text-black border-white"
+                          : "!text-white hover:!text-white hover:!bg-[#252525]"
+                      }`}
+                      onClick={() => handleNavClick(item.page)}
+                    >
+                      <Icon
+                        name={item.icon}
+                        className={isActive ? "!text-black" : "!text-white"}
+                      />
+                      <span className={isActive ? "!text-black font-semibold" : "!text-white"}>
+                        {item.label}
+                      </span>
+                      {isActive && <i className="nav-dot" />}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           ))}
         </nav>
 
         <div className="sidebar-bottom mt-auto pt-3 border-t border-[#242424]">
-          <span className="block px-3 mb-1.5 text-[9px] font-bold tracking-[1.6px] text-[#747474] uppercase">
+          <span className="block px-3 mb-1.5 text-[9px] font-bold tracking-[1.6px] text-white/70 uppercase">
             ACCOUNT
           </span>
           <div className="grid gap-1">
-            {accountItems.map((item) => (
-              <button
-                type="button"
-                key={item.page}
-                className={`nav-item !min-h-[42px] ${page === item.page ? "active" : ""}`}
-                onClick={() => handleNavClick(item.page)}
-              >
-                <Icon name={item.icon} />
-                <span>{item.label}</span>
-                {page === item.page && <i className="nav-dot" />}
-              </button>
-            ))}
+            {accountItems.map((item) => {
+              const isActive = page === item.page;
+              return (
+                <button
+                  type="button"
+                  key={item.page}
+                  className={`nav-item !min-h-[42px] ${
+                    isActive
+                      ? "active !bg-white !text-black border-white"
+                      : "!text-white hover:!text-white hover:!bg-[#252525]"
+                  }`}
+                  onClick={() => handleNavClick(item.page)}
+                >
+                  <Icon
+                    name={item.icon}
+                    className={isActive ? "!text-black" : "!text-white"}
+                  />
+                  <span className={isActive ? "!text-black font-semibold" : "!text-white"}>
+                    {item.label}
+                  </span>
+                  {isActive && <i className="nav-dot" />}
+                </button>
+              );
+            })}
             <button
               type="button"
-              className="nav-item logout !min-h-[42px]"
+              className="nav-item logout !min-h-[42px] !text-white hover:!text-white hover:!bg-[#252525]"
               onClick={onLogout}
             >
-              <Icon name="logout" />
-              <span>Sign out</span>
+              <Icon name="logout" className="!text-white" />
+              <span className="!text-white">Sign out</span>
             </button>
           </div>
         </div>
