@@ -55,23 +55,6 @@ export function BusinessDashboardPage({
           {businessName}
         </h1>
       </div>
-
-      {/* Two Prominent Quick Action Buttons */}
-      <div className="grid grid-cols-2 gap-3 mb-6">
-        <QuickAction
-          icon="send"
-          title="New payment"
-          variant="primary"
-          onClick={() => setPage("Send money")}
-        />
-        <QuickAction
-          icon="upload"
-          title="Bulk transfer"
-          variant="secondary"
-          onClick={() => setPage("Bulk transfer")}
-        />
-      </div>
-
       <div className="stat-grid business-stat-grid grid grid-cols-2 lg:grid-cols-4 gap-0 border border-line bg-paper rounded-2xl overflow-hidden">
         <StatCard
           label="Monthly transfer limit"
@@ -94,6 +77,24 @@ export function BusinessDashboardPage({
           icon="users"
         />
       </div>
+
+      {/* Two Prominent Quick Action Buttons */}
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        <QuickAction
+          icon="send"
+          title="New payment"
+          variant="primary"
+          onClick={() => setPage("Send money")}
+        />
+        <QuickAction
+          icon="upload"
+          title="Bulk transfer"
+          variant="secondary"
+          onClick={() => setPage("Bulk transfer")}
+        />
+      </div>
+
+
 
       <RateMarquee />
 

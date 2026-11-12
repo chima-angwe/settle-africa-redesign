@@ -14,8 +14,22 @@ export interface AirtimeOperator {
   code: string;
 }
 
+export type TopupMode = "airtime" | "data";
+
+export type DataPlanCategory = "Daily" | "Weekly" | "Monthly";
+
+export interface DataPlan {
+  id: string;
+  dataAmount: string;
+  validity: string;
+  price: number;
+  category: DataPlanCategory;
+  note?: string;
+}
+
 export interface AirtimeTransaction {
   id: string;
+  type?: TopupMode;
   operator: string;
   phoneNumber: string;
   amount: number;
@@ -24,5 +38,7 @@ export interface AirtimeTransaction {
   date: string;
   reference: string;
   status: "Completed" | "Processing" | "Failed";
+  planName?: string;
+  validity?: string;
 }
 
