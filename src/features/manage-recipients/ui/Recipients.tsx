@@ -27,6 +27,7 @@ export function Recipients({
 }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editingRecipient, setEditingRecipient] = useState<Recipient | null>(null);
+  const [recipientToRemove, setRecipientToRemove] = useState<Recipient | null>(null);
   const [recipientName, setRecipientName] = useState("");
   const [country, setCountry] = useState("Nigeria");
   const [account, setAccount] = useState("");
@@ -57,11 +58,16 @@ export function Recipients({
   };
 
   const removeRecipient = (recipient: Recipient) => {
-    if (window.confirm(`Remove ${recipient.name}?`)) {
-      setRecipients(recipients.filter((item) => item.id !== recipient.id));
-      setNotice(`${recipient.name} removed.`);
-      setTimeout(() => setNotice(""), 3000);
-    }
+    setRecipientToRemove(recipient);
+  };
+
+  const confirmRemoveRecipient = () => {
+    if (!recipientToRemove) return;
+    const removedName = recipientToRemove.name;
+    setRecipients(recipients.filter((item) => item.id !== recipientToRemove.id));
+    setRecipientToRemove(null);
+    setNotice(`${removedName} removed.`);
+    setTimeout(() => setNotice(""), 3000);
   };
 
   const saveRecipient = (event: React.FormEvent) => {
@@ -314,6 +320,74 @@ export function Recipients({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Remove Recipient Confirmation Modal */}
+      {recipientToRemove && (
+        <div
+          className="modal-scrim"
+          onClick={() => setRecipientToRemove(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="remove-recipient-title"
+            className="bg-paper border border-line rounded-2xl p-6 sm:p-7 w-full max-w-sm shadow-card relative space-y-5"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <h2
+                  id="remove-recipient-title"
+                  className="text-lg font-heading font-bold text-ink m-0"
+                >
+                  Remove recipient
+                </h2>
+                <p className="text-xs text-muted m-0 leading-relaxed">
+                  Are you sure you want to remove{" "}
+                  <strong className="text-ink font-semibold">
+                    {recipientToRemove.name}
+                  </strong>{" "}
+                  from your saved recipients?
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRecipientToRemove(null)}
+                aria-label="Close modal"
+                className="w-8 h-8 rounded-lg text-muted hover:text-ink hover:bg-soft flex items-center justify-center shrink-0 transition-colors cursor-pointer"
+              >
+                <Icon name="close" size={16} />
+              </button>
+            </div>
+
+            <div className="px-3.5 py-2.5 bg-soft rounded-xl border border-line/60 flex items-center justify-between gap-2 text-xs">
+              <span className="text-muted truncate">
+                {recipientToRemove.country} · {recipientToRemove.method}
+              </span>
+              <strong className="font-mono font-semibold text-ink shrink-0">
+                {recipientToRemove.account}
+              </strong>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => setRecipientToRemove(null)}
+                className="button button-secondary h-10 px-4 rounded-xl text-xs font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmRemoveRecipient}
+                className="button button-primary h-10 px-4 rounded-xl text-xs font-semibold cursor-pointer"
+              >
+                Remove
+              </button>
+            </div>
           </div>
         </div>
       )}

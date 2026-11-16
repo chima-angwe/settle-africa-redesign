@@ -3,4 +3,5 @@ export * from "./model/types";
 export * from "./ui/CountryFlag";
 export * from "./ui/CountryBadge";
 export * from "./ui/CountrySelect";
+export * from "./ui/CountryCurrencySelect";
 

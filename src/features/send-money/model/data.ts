@@ -1,3 +1,5 @@
+import { countryCurrencies, payoutOptions } from "@/entities/country";
+
 /**
  * Technical Data & FX Engine Specification for Settle Africa
  * Flow 1: Personal Remittance (send-money)
@@ -40,10 +42,43 @@ export const LIVE_RATES_USD: Record<string, number> = {
   ZAR: 18.2,
   GHS: 15.2,
   XOF: 610.0,
+  XAF: 610.0,
   EGP: 48.5,
   RWF: 1370.0,
   UGX: 3720.0,
   TZS: 2670.0,
+  DZD: 134.0,
+  AOA: 915.0,
+  BWP: 13.6,
+  BIF: 2890.0,
+  CVE: 101.0,
+  KMF: 452.0,
+  CDF: 2850.0,
+  DJF: 177.7,
+  ERN: 15.0,
+  SZL: 18.2,
+  ETB: 120.0,
+  GMD: 70.0,
+  GNF: 8600.0,
+  LSL: 18.2,
+  LRD: 192.0,
+  LYD: 4.8,
+  MGA: 4550.0,
+  MWK: 1735.0,
+  MRU: 39.7,
+  MUR: 46.2,
+  MAD: 9.9,
+  MZN: 63.9,
+  NAD: 18.2,
+  STN: 22.5,
+  SCR: 13.8,
+  SLE: 22.5,
+  SOS: 571.0,
+  SSP: 3200.0,
+  SDG: 601.0,
+  TND: 3.12,
+  ZMW: 26.5,
+  ZWG: 13.8,
   EUR: 0.92,
   GBP: 0.79,
 };
@@ -298,17 +333,15 @@ export interface CurrencyInfo {
 }
 
 export const SUPPORTED_SOURCE_CURRENCIES: CurrencyInfo[] = [
-  { code: "USD", name: "US Dollar", symbol: "$", country: "United States", flagCode: "us" },
   { code: "NGN", name: "Nigerian Naira", symbol: "₦", country: "Nigeria", flagCode: "ng" },
   { code: "KES", name: "Kenyan Shilling", symbol: "KSh", country: "Kenya", flagCode: "ke" },
-  { code: "ZAR", name: "South African Rand", symbol: "R", country: "South Africa", flagCode: "za" },
   { code: "GHS", name: "Ghanaian Cedi", symbol: "GH₵", country: "Ghana", flagCode: "gh" },
+  { code: "ZAR", name: "South African Rand", symbol: "R", country: "South Africa", flagCode: "za" },
   { code: "XOF", name: "West African CFA", symbol: "CFA", country: "Côte d’Ivoire", flagCode: "ci" },
   { code: "EGP", name: "Egyptian Pound", symbol: "E£", country: "Egypt", flagCode: "eg" },
   { code: "RWF", name: "Rwandan Franc", symbol: "FRw", country: "Rwanda", flagCode: "rw" },
   { code: "UGX", name: "Ugandan Shilling", symbol: "USh", country: "Uganda", flagCode: "ug" },
-  { code: "EUR", name: "Euro", symbol: "€", country: "European Union", flagCode: "eu" },
-  { code: "GBP", name: "British Pound", symbol: "£", country: "United Kingdom", flagCode: "gb" },
+  { code: "TZS", name: "Tanzanian Shilling", symbol: "TSh", country: "Tanzania", flagCode: "tz" },
 ];
 
 export const CORRIDOR_RECEIVE_CURRENCIES: CurrencyInfo[] = [
@@ -316,7 +349,7 @@ export const CORRIDOR_RECEIVE_CURRENCIES: CurrencyInfo[] = [
   { code: "KES", name: "Kenyan Shilling", symbol: "KSh", country: "Kenya", flagCode: "ke" },
   { code: "GHS", name: "Ghanaian Cedi", symbol: "GH₵", country: "Ghana", flagCode: "gh" },
   { code: "ZAR", name: "South African Rand", symbol: "R", country: "South Africa", flagCode: "za" },
-  { code: "XOF", name: "West African CFA", symbol: "CFA", country: "Francophone WA", flagCode: "ci" },
+  { code: "XOF", name: "West African CFA", symbol: "CFA", country: "Côte d’Ivoire", flagCode: "ci" },
   { code: "RWF", name: "Rwandan Franc", symbol: "FRw", country: "Rwanda", flagCode: "rw" },
   { code: "UGX", name: "Ugandan Shilling", symbol: "USh", country: "Uganda", flagCode: "ug" },
   { code: "EGP", name: "Egyptian Pound", symbol: "E£", country: "Egypt", flagCode: "eg" },
@@ -324,24 +357,12 @@ export const CORRIDOR_RECEIVE_CURRENCIES: CurrencyInfo[] = [
 ];
 
 export const COUNTRY_TO_CURRENCY: Record<string, string> = {
-  Nigeria: "NGN",
-  Kenya: "KES",
-  Ghana: "GHS",
-  "South Africa": "ZAR",
-  Rwanda: "RWF",
-  Uganda: "UGX",
-  Egypt: "EGP",
-  Tanzania: "TZS",
-  "Côte d’Ivoire": "XOF",
-  Senegal: "XOF",
-  Benin: "XOF",
-  "Burkina Faso": "XOF",
-  Mali: "XOF",
-  Niger: "XOF",
-  Togo: "XOF",
-  "United States": "USD",
-  "United Kingdom": "GBP",
+  ...countryCurrencies,
 };
+
+export function getCorridorBanks(country: string): string[] {
+  return CORRIDOR_BANKS[country] || payoutOptions[country]?.banks || CORRIDOR_BANKS.Nigeria;
+}
 
 // ==========================================
 // 6. Corridor Partner Banks & Institutions

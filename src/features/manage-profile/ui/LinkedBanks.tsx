@@ -115,10 +115,10 @@ export function LinkedBanks({ country, onNotice }: LinkedBanksProps) {
   };
 
   return (
-    <div className="max-w-3xl mx-auto py-2 sm:py-6 px-4">
+    <div className="w-full space-y-6">
       <PageHeading title="Linked banks" />
 
-      <div className="space-y-8 mt-4">
+      <div className="space-y-8">
         <section className="space-y-3">
           {linked.length > 0 && (
             <h2 className="text-xs font-heading font-bold text-ink uppercase tracking-wider">

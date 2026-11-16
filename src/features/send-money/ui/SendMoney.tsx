@@ -2,15 +2,12 @@ import type React from "react";
 import { useState, useRef } from "react";
 import { Icon } from "@/shared/ui";
 import type { Page } from "@/shared/types";
-import { CountryFlag, CountrySelect, countryFlag } from "@/entities/country";
+import { CountryCurrencySelect, CountrySelect } from "@/entities/country";
 import {
   useSendMoneyFlow,
   type UseSendMoneyFlowProps,
 } from "../model/useSendMoneyFlow";
-import {
-  SUPPORTED_SOURCE_CURRENCIES,
-  CORRIDOR_BANKS,
-} from "../model/data";
+import { getCorridorBanks } from "../model/data";
 
 export interface SendMoneyProps extends UseSendMoneyFlowProps {
   setPage: (page: Page) => void;
@@ -283,27 +280,15 @@ export function SendMoney(props: SendMoneyProps) {
                     className="w-full text-2xl sm:text-3xl font-heading font-semibold text-ink bg-transparent outline-none placeholder:text-subtle"
                     autoFocus
                   />
-                  <div className="flex items-center gap-1.5 pl-3 border-l border-line shrink-0">
-                    <CountryFlag
-                      code={
-                        SUPPORTED_SOURCE_CURRENCIES.find(
-                          (c) => c.code === flow.sendCurrency
-                        )?.flagCode || "us"
-                      }
-                      country={flow.sendCurrency}
+                  <div className="pl-2 border-l border-line shrink-0">
+                    <CountryCurrencySelect
+                      country={flow.sendCountry}
+                      onChange={(country, code) => {
+                        flow.setSendCountry(country);
+                        flow.setSendCurrency(code);
+                      }}
+                      ariaLabel="Select sending country and currency"
                     />
-                    <select
-                      value={flow.sendCurrency}
-                      onChange={(e) => flow.setSendCurrency(e.target.value)}
-                      className="send-currency-inline bg-transparent font-medium text-ink text-sm outline-none cursor-pointer"
-                      aria-label="Select sending currency"
-                    >
-                      {SUPPORTED_SOURCE_CURRENCIES.map((c) => (
-                        <option key={c.code} value={c.code}>
-                          {c.code}
-                        </option>
-                      ))}
-                    </select>
                   </div>
                 </div>
               </div>
@@ -327,12 +312,12 @@ export function SendMoney(props: SendMoneyProps) {
                   <div className="text-2xl sm:text-3xl font-heading font-semibold text-ink">
                     {formatAmount(flow.calculation.recipientReceives)}
                   </div>
-                  <div className="flex items-center gap-1.5 pl-3 border-l border-line shrink-0 font-medium text-ink text-sm">
-                    <CountryFlag
-                      code={countryFlag(flow.targetCountry)}
+                  <div className="pl-2 border-l border-line shrink-0">
+                    <CountryCurrencySelect
                       country={flow.targetCountry}
+                      onChange={(country) => flow.setTargetCountry(country)}
+                      ariaLabel="Select receiving country and currency"
                     />
-                    <span>{flow.targetCurrency}</span>
                   </div>
                 </div>
               </div>
@@ -579,7 +564,7 @@ export function SendMoney(props: SendMoneyProps) {
                     onChange={(e) => flow.setBankName(e.target.value)}
                     className="w-full h-11 pl-3.5 pr-10 border border-line rounded-xl bg-paper text-ink text-sm outline-none focus:border-ink font-medium cursor-pointer"
                   >
-                    {(CORRIDOR_BANKS[flow.targetCountry] || CORRIDOR_BANKS.Nigeria).map(
+                    {getCorridorBanks(flow.targetCountry).map(
                       (b) => (
                         <option key={b} value={b}>
                           {b}

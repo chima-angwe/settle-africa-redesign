@@ -1,5 +1,5 @@
 import type React from "react";
-import { useState, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/shared/ui";
 import { parseCsvLine } from "@/shared/lib";
 import type { Transfer } from "@/entities/transfer";
@@ -7,8 +7,14 @@ import { countries, CountryBadge } from "@/entities/country";
 import {
   CORRIDOR_BANKS,
   COUNTRY_TO_CURRENCY,
+  INITIAL_CORPORATE_FUNDING_SOURCES,
+  STORAGE_KEYS,
+  SUCCESS_PROBABILITY,
   resolveInterbankAccountName,
+  type CorporateFundingSource,
 } from "@/features/send-money";
+
+type BulkStep = "form" | "payment" | "processing" | "success" | "failed";
 
 export interface BulkTransferProps {
   setTransfers: React.Dispatch<React.SetStateAction<Transfer[]>>;
@@ -59,13 +65,51 @@ export function BulkTransfer({
   const [rows, setRows] = useState<BulkRecipientRow[]>(() => [
     createEmptyRow("row-initial-1"),
   ]);
+  const [step, setStep] = useState<BulkStep>("form");
   const [submitted, setSubmitted] = useState<Transfer[]>([]);
   const [batchId, setBatchId] = useState("");
   const [error, setError] = useState("");
+  const [paymentError, setPaymentError] = useState("");
+  const [processingProgress, setProcessingProgress] = useState(0);
+  const [processingMessage, setProcessingMessage] = useState("");
   const [isDragging, setIsDragging] = useState(false);
 
+  const fundingSources = useMemo<CorporateFundingSource[]>(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.FUNDING_SOURCES);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {
+      // ignore
+    }
+    return INITIAL_CORPORATE_FUNDING_SOURCES;
+  }, []);
+
+  const [selectedSourceId, setSelectedSourceId] = useState<string>(
+    () => fundingSources.find((s) => s.isDefault)?.id || fundingSources[0]?.id || "cfs-01"
+  );
+
+  const selectedSource =
+    fundingSources.find((s) => s.id === selectedSourceId) || fundingSources[0];
+
   const lookupTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const paymentTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const clearPaymentTimers = () => {
+    paymentTimersRef.current.forEach((t) => clearTimeout(t));
+    paymentTimersRef.current = [];
+  };
+
+  useEffect(() => {
+    const lookupTimers = lookupTimersRef.current;
+    return () => {
+      Object.values(lookupTimers).forEach((t) => clearTimeout(t));
+      clearPaymentTimers();
+    };
+  }, []);
 
   const isRowVerified = (row: BulkRecipientRow) => {
     const cleanDigits = row.accountNumber.replace(/\D/g, "");
@@ -242,6 +286,7 @@ export function BulkTransfer({
 
       setRows(imported);
       setSubmitted([]);
+      setStep("form");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not read CSV file.");
     }
@@ -258,7 +303,11 @@ export function BulkTransfer({
     URL.revokeObjectURL(url);
   };
 
-  const createBatch = () => {
+  const feePercent = selectedSource?.feePercent ?? 0.15;
+  const feeAmount = totalAmount * (feePercent / 100);
+  const totalDebit = totalAmount + feeAmount;
+
+  const goToPayment = () => {
     if (validRows.length === 0) {
       setError("Complete at least one recipient with verified account and amount.");
       return;
@@ -267,50 +316,367 @@ export function BulkTransfer({
       setError("Please complete or remove unfinished recipient rows.");
       return;
     }
-
-    const now = Date.now();
-    const id = "BT-" + String(now).slice(-7);
-    const created: Transfer[] = rows.map((row, index) => {
-      const curr = COUNTRY_TO_CURRENCY[row.country] || "NGN";
-      return {
-        id: "BP-" + String(now).slice(-6) + "-" + String(index + 1).padStart(2, "0"),
-        batchId: id,
-        name: row.recipientName.trim(),
-        country: row.country,
-        amount: Number(row.amount),
-        currency: curr,
-        provider: row.bank,
-        method: "Bank transfer",
-        description: row.narration.trim() || undefined,
-        status: "Processing",
-        date: "Just now",
-      };
-    });
-
-    setTransfers((current) => [...created, ...current]);
-    setBatchId(id);
-    setSubmitted(created);
     setError("");
+    setPaymentError("");
+    setStep("payment");
+  };
+
+  const executeBatchPayment = () => {
+    clearPaymentTimers();
+    setPaymentError("");
+    setStep("processing");
+    setProcessingProgress(20);
+    setProcessingMessage("Authorizing corporate treasury debit mandate...");
+
+    const t1 = setTimeout(() => {
+      setProcessingProgress(60);
+      setProcessingMessage(`Dispatching ${rows.length} payouts across corridor rails...`);
+    }, 750);
+
+    const t2 = setTimeout(() => {
+      setProcessingProgress(100);
+      setProcessingMessage("Confirming batch settlement...");
+
+      const isSuccess = Math.random() < SUCCESS_PROBABILITY;
+      const now = Date.now();
+      const id = "BT-" + String(now).slice(-7);
+      const created: Transfer[] = rows.map((row, index) => {
+        const curr = COUNTRY_TO_CURRENCY[row.country] || "NGN";
+        return {
+          id: "BP-" + String(now).slice(-6) + "-" + String(index + 1).padStart(2, "0"),
+          batchId: id,
+          name: row.recipientName.trim(),
+          country: row.country,
+          amount: Number(row.amount),
+          currency: curr,
+          provider: row.bank,
+          method: selectedSource?.type === "corporate_card" ? "Corporate Card" : "Bank transfer",
+          description: row.narration.trim() || undefined,
+          status: isSuccess ? "Completed" : "Failed",
+          date: "Just now",
+        };
+      });
+
+      setTransfers((current) => [...created, ...current]);
+      setBatchId(id);
+      setSubmitted(created);
+
+      if (isSuccess) {
+        setStep("success");
+      } else {
+        setPaymentError(
+          "Partner clearing rail timed out or declined the batch authorization. Your funding source was not charged."
+        );
+        setStep("failed");
+      }
+    }, 1700);
+
+    paymentTimersRef.current = [t1, t2];
+  };
+
+  const resetBatch = () => {
+    clearPaymentTimers();
+    setRows([createEmptyRow()]);
+    setSubmitted([]);
+    setBatchId("");
+    setError("");
+    setPaymentError("");
+    setProcessingProgress(0);
+    setProcessingMessage("");
+    setStep("form");
   };
 
   // ==========================================
-  // Batch Confirmation Receipt View
+  // Step 2: Make Payment View
   // ==========================================
-  if (submitted.length > 0) {
+  if (step === "payment") {
+    return (
+      <div className="max-w-5xl mx-auto py-2 sm:py-6 px-4 space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-xl sm:text-2xl font-heading font-bold text-ink tracking-tight m-0">
+              Make payment
+            </h1>
+            <p className="text-xs text-muted mt-0.5 m-0">
+              Select your funding source and authorize this {rows.length}-recipient batch
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setStep("form")}
+            className="button button-quiet h-10 px-4 rounded-xl text-xs font-semibold cursor-pointer self-start sm:self-auto"
+          >
+            ← Back to recipients
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <div className="lg:col-span-7 space-y-5">
+            {/* Funding Source Selection */}
+            <div className="bg-paper border border-line rounded-2xl p-5 sm:p-6 shadow-subtle space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xs sm:text-sm font-heading font-bold text-ink m-0">
+                  Funding source
+                </h2>
+                <span className="text-[11px] text-muted">
+                  Corporate treasury mandate
+                </span>
+              </div>
+
+              <div className="space-y-2.5">
+                {fundingSources.map((source) => {
+                  const isSelected = source.id === selectedSource?.id;
+                  return (
+                    <button
+                      key={source.id}
+                      type="button"
+                      onClick={() => setSelectedSourceId(source.id)}
+                      className={`w-full p-3.5 rounded-xl border text-left flex items-center justify-between gap-3 transition-colors cursor-pointer ${
+                        isSelected
+                          ? "border-ink bg-soft"
+                          : "border-line bg-paper hover:bg-soft/60"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="w-9 h-9 rounded-xl bg-paper border border-line flex items-center justify-center shrink-0 text-ink">
+                          <Icon
+                            name={source.type === "corporate_card" ? "card" : "building"}
+                            size={16}
+                          />
+                        </span>
+                        <div className="min-w-0">
+                          <strong className="text-xs sm:text-sm font-semibold text-ink block truncate">
+                            {source.institutionName} · {source.maskedNumber}
+                          </strong>
+                          <span className="text-[11px] text-muted block truncate">
+                            {source.accountLabel} · {source.settlementSpeed}
+                          </span>
+                        </div>
+                      </div>
+                      <span className="text-[11px] font-mono font-semibold text-ink shrink-0">
+                        {source.feePercent}% fee
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Recipients Breakdown */}
+            <div className="bg-paper border border-line rounded-2xl overflow-hidden shadow-subtle">
+              <div className="px-5 py-3.5 border-b border-line flex items-center justify-between bg-soft/40">
+                <strong className="text-xs font-heading font-bold text-ink">
+                  Recipients ({rows.length})
+                </strong>
+                <span className="text-[11px] text-muted">Verified</span>
+              </div>
+              <div className="divide-y divide-line max-h-72 overflow-y-auto">
+                {rows.map((row) => {
+                  const curr = COUNTRY_TO_CURRENCY[row.country] || "NGN";
+                  const sym = CURRENCY_SYMBOLS[curr] || `${curr} `;
+                  return (
+                    <div
+                      key={row.key}
+                      className="px-5 py-3 flex items-center justify-between gap-3 text-xs"
+                    >
+                      <div className="min-w-0">
+                        <strong className="text-ink font-semibold block truncate">
+                          {row.recipientName}
+                        </strong>
+                        <span className="text-[11px] text-muted block truncate">
+                          {row.country} · {row.bank} · {row.accountNumber}
+                        </span>
+                      </div>
+                      <strong className="font-mono font-semibold text-ink shrink-0">
+                        {sym}
+                        {Number(row.amount).toLocaleString("en-US", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </strong>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Right Summary & Authorize Card */}
+          <div className="lg:col-span-5 bg-paper border border-line rounded-2xl p-5 sm:p-6 shadow-subtle space-y-5">
+            <h2 className="text-sm font-heading font-bold text-ink m-0">
+              Payment summary
+            </h2>
+
+            <div className="text-xs divide-y divide-line">
+              <div className="flex justify-between py-2.5">
+                <span className="text-muted">Recipients</span>
+                <strong className="text-ink font-semibold">{rows.length}</strong>
+              </div>
+              <div className="flex justify-between py-2.5">
+                <span className="text-muted">Batch subtotal</span>
+                <span className="text-ink font-mono font-medium">
+                  {primarySymbol}
+                  {totalAmount.toLocaleString("en-US", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </span>
+              </div>
+              <div className="flex justify-between py-2.5">
+                <span className="text-muted">Processing fee ({feePercent}%)</span>
+                <span className="text-ink font-mono font-medium">
+                  {primarySymbol}
+                  {feeAmount.toLocaleString("en-US", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </span>
+              </div>
+              <div className="flex justify-between py-3 font-bold text-ink text-sm">
+                <span>Total debit</span>
+                <span className="font-mono">
+                  {primarySymbol}
+                  {totalDebit.toLocaleString("en-US", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2.5 pt-1">
+              <button
+                type="button"
+                onClick={executeBatchPayment}
+                className="button button-primary w-full h-11 rounded-xl text-xs sm:text-sm font-bold cursor-pointer"
+              >
+                Make payment
+              </button>
+              <button
+                type="button"
+                onClick={() => setStep("form")}
+                className="button button-quiet w-full h-10 rounded-xl text-xs font-semibold cursor-pointer"
+              >
+                Edit recipients
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // Step 3: Processing View
+  // ==========================================
+  if (step === "processing") {
+    return (
+      <div className="max-w-md mx-auto py-16 px-4 text-center">
+        <div className="w-14 h-14 mx-auto mb-6 rounded-full border-2 border-line border-t-ink animate-spin" />
+        <h2 className="text-xl font-heading font-bold text-ink mb-2">
+          Processing batch payment
+        </h2>
+        <p className="text-muted text-sm mb-8">
+          {processingMessage || "Routing payouts across partner rails..."}
+        </p>
+
+        <div className="w-full bg-soft h-1 rounded-full overflow-hidden mb-6">
+          <div
+            className="bg-ink h-full transition-all duration-300"
+            style={{ width: `${processingProgress}%` }}
+          />
+        </div>
+
+        <div className="text-xs text-muted flex items-center justify-between px-1">
+          <span>{rows.length} recipients</span>
+          <span className="font-mono">{selectedSource?.institutionName}</span>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // Step 4b: Failed View
+  // ==========================================
+  if (step === "failed") {
+    return (
+      <div className="max-w-md mx-auto py-10 px-4">
+        <div className="bg-paper border border-line rounded-2xl p-6 sm:p-8 text-center shadow-subtle">
+          <div className="w-12 h-12 bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 rounded-full flex items-center justify-center mx-auto mb-5 border border-rose-200 dark:border-rose-900">
+            <Icon name="close" size={22} />
+          </div>
+
+          <h2 className="text-2xl font-heading font-bold text-ink mb-2">
+            Batch payment failed
+          </h2>
+          <p className="text-muted text-sm mb-6">
+            {paymentError ||
+              "The partner clearing rail timed out. Your funding source was not charged."}
+          </p>
+
+          <div className="bg-soft border border-line rounded-xl p-4 text-left text-xs space-y-2 mb-6">
+            <div className="flex justify-between">
+              <span className="text-muted">Batch reference</span>
+              <span className="font-mono font-semibold text-ink">{batchId}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted">Recipients</span>
+              <span className="font-medium text-ink">{submitted.length}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted">Attempted total</span>
+              <span className="font-mono font-semibold text-ink">
+                {primarySymbol}
+                {totalDebit.toLocaleString("en-US", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </span>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <button
+              type="button"
+              className="button button-primary w-full h-11 text-sm font-medium rounded-xl cursor-pointer"
+              onClick={executeBatchPayment}
+            >
+              Try again
+            </button>
+            <button
+              type="button"
+              className="button button-quiet w-full h-11 text-sm text-muted hover:text-ink rounded-xl cursor-pointer"
+              onClick={() => setStep("payment")}
+            >
+              Back to make payment
+            </button>
+            <button
+              type="button"
+              className="w-full h-9 text-xs font-medium text-muted hover:text-ink cursor-pointer"
+              onClick={() => setStep("form")}
+            >
+              Edit recipients
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // Step 4a: Success / Batch Confirmation Receipt View
+  // ==========================================
+  if (step === "success" && submitted.length > 0) {
     return (
       <div className="max-w-5xl mx-auto py-2 sm:py-6 px-4 space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <h1 className="text-2xl font-heading font-bold text-ink m-0">
-            Batch submitted
+            Batch payment successful
           </h1>
           <button
             type="button"
             className="button button-secondary h-10 px-4 rounded-xl text-xs font-semibold cursor-pointer"
-            onClick={() => {
-              setRows([createEmptyRow()]);
-              setSubmitted([]);
-              setBatchId("");
-            }}
+            onClick={resetBatch}
           >
             New batch
           </button>
@@ -323,20 +689,23 @@ export function BulkTransfer({
             </span>
             <div>
               <strong className="text-sm font-bold text-ink block">
-                {batchId} · {submitted.length} payments
+                {batchId} · {submitted.length} payments completed
               </strong>
-              <span className="text-xs text-muted">Processing across partner rails</span>
+              <span className="text-xs text-muted">
+                Paid via {selectedSource?.institutionName} ({selectedSource?.maskedNumber})
+              </span>
             </div>
           </div>
           <div className="sm:text-right">
             <span className="text-[10px] font-bold text-muted uppercase tracking-wider block">
-              BATCH TOTAL
+              TOTAL PAID
             </span>
             <strong className="text-xl font-heading font-bold text-ink font-mono">
               {primarySymbol}
-              {submitted
-                .reduce((s, t) => s + t.amount, 0)
-                .toLocaleString("en-US", { minimumFractionDigits: 2 })}
+              {totalDebit.toLocaleString("en-US", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
             </strong>
           </div>
         </div>
@@ -359,6 +728,10 @@ export function BulkTransfer({
                 </div>
               </div>
               <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0">
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                  <Icon name="check" size={12} />
+                  Completed
+                </span>
                 <strong className="text-xs font-heading font-bold text-ink font-mono">
                   {CURRENCY_SYMBOLS[t.currency] || `${t.currency} `}
                   {t.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
@@ -670,7 +1043,7 @@ export function BulkTransfer({
       <div className="flex items-center justify-end pt-2">
         <button
           type="button"
-          onClick={createBatch}
+          onClick={goToPayment}
           disabled={validRows.length === 0 || validRows.length !== rows.length}
           className="button button-primary h-11 px-6 rounded-xl text-xs font-bold inline-flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:pointer-events-none transition-all"
         >
