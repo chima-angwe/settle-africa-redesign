@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Icon, LogoMark } from "@/shared/ui";
-import { ThemeToggle } from "@/features/theme-toggle";
 import { CountryBadge, CountrySelect, callingCodes } from "@/entities/country";
 import type { AccountType, Theme } from "@/shared/types";
 
@@ -33,8 +32,6 @@ const SIGNUP_STEPS = ["Contact", "Verify", "Profile"] as const;
 export function AuthScreen({
   mode,
   setMode,
-  theme,
-  onToggleTheme,
   accountType,
   onAccountTypeChange,
   initialCountry,
@@ -224,7 +221,7 @@ export function AuthScreen({
             <Icon name="shield" size={15} />
             <span>Secure, private transfers</span>
           </div>
-          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+
         </div>
       </header>
 
