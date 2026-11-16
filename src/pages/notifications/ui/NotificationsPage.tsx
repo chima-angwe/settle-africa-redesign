@@ -28,9 +28,9 @@ export function NotificationsPage({ accountType }: NotificationsPageProps) {
 
   if (accountType !== "business") {
     return (
-      <div className="max-w-3xl mx-auto py-2 sm:py-6 px-4">
+      <div className="w-full space-y-6">
         <PageHeading title="Notifications" />
-        <div className="border border-line rounded-2xl bg-paper shadow-subtle py-16 px-6 flex flex-col items-center justify-center text-center">
+        <div className="w-full border border-line rounded-2xl bg-paper shadow-subtle py-16 px-6 flex flex-col items-center justify-center text-center">
           <span className="inline-grid w-12 h-12 place-items-center rounded-2xl bg-soft text-muted mb-3">
             <Icon name="bell" size={20} />
           </span>
@@ -43,10 +43,10 @@ export function NotificationsPage({ accountType }: NotificationsPageProps) {
   }
 
   return (
-    <div className="max-w-3xl mx-auto py-2 sm:py-6 px-4">
+    <div className="w-full space-y-6">
       <PageHeading title="Notifications" />
 
-      <div className="bg-paper border border-line rounded-2xl overflow-hidden shadow-subtle divide-y divide-line">
+      <div className="w-full bg-paper border border-line rounded-2xl overflow-hidden shadow-subtle divide-y divide-line">
         {BUSINESS_APPROVAL_REQUESTS.map((item) => {
           const isApproved = approved.includes(item.id);
           return (

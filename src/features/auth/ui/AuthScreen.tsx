@@ -28,6 +28,8 @@ export interface AuthScreenProps {
   onComplete: (account: AuthCompleteData) => void;
 }
 
+const SIGNUP_STEPS = ["Contact", "Verify", "Profile"] as const;
+
 export function AuthScreen({
   mode,
   setMode,
@@ -56,10 +58,13 @@ export function AuthScreen({
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
+  const formattedPhone = `${callingCodes[country] || ""} ${phone.trim()}`.trim();
+
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
     setError("");
     setNotice("");
+
     if (mode === "forgot") {
       if (!email.trim()) {
         setError("Enter the email address linked to your account.");
@@ -70,6 +75,7 @@ export function AuthScreen({
       );
       return;
     }
+
     if (mode === "signup" && stage === 1) {
       if (accountType === "business" && !businessName.trim()) {
         setError("Enter your business name to continue.");
@@ -83,10 +89,11 @@ export function AuthScreen({
         setError("Complete the required contact details.");
         return;
       }
-      setNotice(`Demo verification code sent to ${phone}.`);
+      setNotice(`Demo verification code sent to ${formattedPhone || phone}.`);
       setStage(2);
       return;
     }
+
     if (mode === "signup" && stage === 2) {
       if (otp !== "123456") {
         setError("That code did not match. Use 123456 for this prototype.");
@@ -96,6 +103,7 @@ export function AuthScreen({
       setStage(3);
       return;
     }
+
     if (mode === "signup" && stage === 3) {
       if (
         !dateOfBirth ||
@@ -104,18 +112,10 @@ export function AuthScreen({
         setError("Complete your profile details.");
         return;
       }
-      setStage(4);
-      return;
-    }
-    if (mode === "signup" && stage === 4) {
       if (!address.trim()) {
         setError("Enter your residential address to continue.");
         return;
       }
-      setStage(5);
-      return;
-    }
-    if (mode === "signup" && stage === 5) {
       if (password.length < 8) {
         setError("Create a password with at least 8 characters.");
         return;
@@ -125,6 +125,7 @@ export function AuthScreen({
         return;
       }
     }
+
     if (
       mode === "signin" &&
       (!(accountType === "business" ? email.trim() : phone.trim()) ||
@@ -133,6 +134,7 @@ export function AuthScreen({
       setError("Enter your sign-in details.");
       return;
     }
+
     onComplete({
       accountType,
       country,
@@ -146,7 +148,7 @@ export function AuthScreen({
         mode === "signup"
           ? businessName.trim()
           : localStorage.getItem("settle-demo-business-name") ||
-            "Chima Ventures",
+          "Chima Ventures",
       email: email.trim(),
       phone: phone.trim(),
       dateOfBirth,
@@ -154,21 +156,38 @@ export function AuthScreen({
       occupation,
       businessCategory,
     });
+
     if (mode === "signup") {
       setMode("signin");
       setNotice("Your account is ready. Sign in to continue.");
       setPassword("");
       setConfirmPassword("");
+      setShowPassword(false);
       setStage(1);
     }
   };
 
   const heading =
     mode === "signup"
-      ? "Create your account"
+      ? stage === 1
+        ? "Create your account"
+        : stage === 2
+          ? "Verify your phone"
+          : "Complete your profile"
       : mode === "forgot"
         ? "Reset your password"
         : "Welcome back";
+
+  const subtitle =
+    mode === "signup"
+      ? stage === 1
+        ? "Choose your account type and enter your contact details."
+        : stage === 2
+          ? `Enter the 6-digit code sent to ${formattedPhone || phone}.`
+          : "Add your details and set a password to finish."
+      : mode === "forgot"
+        ? "We'll send password reset instructions to your email."
+        : "Sign in to manage your transfers and recipients.";
 
   const changeAccountType = (nextType: AccountType) => {
     onAccountTypeChange(nextType);
@@ -179,99 +198,108 @@ export function AuthScreen({
     setNotice("");
   };
 
+  const switchMode = (nextMode: "signin" | "signup" | "forgot") => {
+    setError("");
+    setNotice("");
+    setShowPassword(false);
+    setStage(1);
+    setMode(nextMode);
+  };
+
   return (
     <div className={`auth-page ${mode === "signup" ? "auth-onboarding" : ""}`}>
       <div className="auth-decoration auth-orbit-one" />
       <div className="auth-decoration auth-orbit-two" />
-      <div className="auth-top">
-        <a className="brand auth-brand flex items-center gap-[11px] p-0 text-ink text-left" href="#home">
+
+      <header className="auth-top">
+        <a className="brand auth-brand" href="#home">
           <LogoMark />
-          <span className="brand-copy flex flex-col gap-[3px]">
-            <strong className="font-heading font-bold text-[13px] tracking-[-0.3px] text-ink">Settle Africa</strong>
-            <small className="text-[#929292] text-[8px] font-semibold tracking-[1.5px] uppercase">MOVE MONEY, WITH CLARITY</small>
+          <span className="brand-copy">
+            <strong>Settle Africa</strong>
+            <small>MOVE MONEY, WITH CLARITY</small>
           </span>
         </a>
-        <div className="auth-top-actions flex items-center gap-3.5">
-          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
-          <div className="auth-top-note hidden sm:flex items-center gap-1.5 text-muted text-[9px]">
-            <Icon name="shield" size={16} /> Secure, private transfers
+        <div className="auth-top-actions">
+          <div className="auth-top-note">
+            <Icon name="shield" size={15} />
+            <span>Secure, private transfers</span>
           </div>
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
         </div>
-      </div>
-      <div
+      </header>
+
+      <main
         className={`auth-layout ${mode === "signup" ? "auth-layout-signup" : ""}`}
       >
-        <section className="auth-story hidden md:block">
-          <span className="eyebrow text-muted text-[8px] font-bold tracking-[1.65px] flex items-center gap-2">
-            <i className="w-1.5 h-1.5 rounded-full bg-current inline-block" /> MONEY THAT MOVES WITH YOU
+        <section className="auth-story" aria-hidden={mode === "signup"}>
+          <span className="eyebrow">
+            <i /> MONEY THAT MOVES WITH YOU
           </span>
-          <h1 className="my-5 text-ink font-heading font-bold text-[clamp(34px,4.4vw,53px)] leading-tight tracking-[-2.5px]">
+          <h1>
             Across borders.
             <br />
-            <em className="text-muted font-normal italic font-serif">Without the guesswork.</em>
+            <em>Without the guesswork.</em>
           </h1>
-          <div className="auth-story-points grid gap-4 mt-[30px]">
-            <div className="flex items-center gap-3">
-              <span className="story-icon grid w-[34px] h-[34px] place-items-center border border-line rounded-full text-ink">
-                <Icon name="eye" />
+          <p>
+            Send funds across Africa with transparent FX rates, upfront fees,
+            and live settlement tracking from start to payout.
+          </p>
+
+          <div className="auth-story-points">
+            <div>
+              <span className="story-icon">
+                <Icon name="eye" size={16} />
               </span>
-              <span className="grid gap-0.5">
-                <strong className="text-[10px] font-bold text-ink">Know before you send</strong>
-                <small className="text-muted text-[9px]">See your rate and fees upfront.</small>
+              <span>
+                <strong>Know before you send</strong>
+                <small>See your exact rate and fees upfront.</small>
               </span>
             </div>
-            <div className="flex items-center gap-3">
-              <span className="story-icon grid w-[34px] h-[34px] place-items-center border border-line rounded-full text-ink">
-                <Icon name="search" />
+            <div>
+              <span className="story-icon">
+                <Icon name="search" size={16} />
               </span>
-              <span className="grid gap-0.5">
-                <strong className="text-[10px] font-bold text-ink">Follow every transfer</strong>
-                <small className="text-muted text-[9px]">Track your money from send to receive.</small>
+              <span>
+                <strong>Follow every transfer</strong>
+                <small>Track your money from send to receive.</small>
               </span>
             </div>
           </div>
-          <div className="auth-route flex max-w-[400px] items-center gap-3.5 mt-[35px] p-4 border border-line bg-paper">
-            <span className="route-circle grid w-[29px] h-[29px] place-items-center border border-ink rounded-full text-ink font-bold text-xs">N</span>
-            <div className="flex-1">
-              <small className="text-muted text-[7px] tracking-[1px] uppercase">YOUR MONEY, ON ITS WAY</small>
-              <div className="route-line relative h-px my-2 border-t border-dashed border-muted">
-                <b className="absolute -top-[3px] left-[20%] w-[5px] h-[5px] rounded-full bg-ink" />
-                <b className="absolute -top-[3px] left-[54%] w-[5px] h-[5px] rounded-full bg-ink" />
-                <b className="absolute -top-[3px] right-[17%] w-[5px] h-[5px] rounded-full bg-ink" />
+
+          <div className="auth-route">
+            <span className="route-circle">N</span>
+            <div>
+              <small>YOUR MONEY, ON ITS WAY</small>
+              <div className="route-line">
+                <b />
+                <b />
+                <b />
               </div>
-              <strong className="text-[9px] text-ink font-bold">
-                Nairobi <span className="mx-1 text-muted">→</span> Lagos
+              <strong>
+                Nairobi <span>→</span> Lagos
               </strong>
             </div>
-            <span className="route-circle route-end grid w-[29px] h-[29px] place-items-center border border-ink rounded-full bg-ink text-inverse-text font-bold text-xs">L</span>
+            <span className="route-circle route-end">L</span>
           </div>
         </section>
+
         <section
           className={`auth-card ${mode === "signup" ? `auth-card-signup signup-stage-${stage}` : ""}`}
         >
-          <div className="auth-card-brand flex items-center justify-center gap-2 mb-5 text-[8px] font-bold tracking-[1.5px]">
-            <LogoMark />
-            <span>SETTLE AFRICA</span>
+          <div className="auth-card-head">
+            <span className="auth-label">
+              {mode === "forgot"
+                ? "ACCOUNT ACCESS"
+                : `${accountType === "business" ? "BUSINESS" : "INDIVIDUAL"} ACCOUNT`}
+            </span>
+            <h2>{heading}</h2>
+            <p className="auth-subtitle">{subtitle}</p>
           </div>
-          <span className="auth-label block text-muted text-center text-[7px] font-bold tracking-[1.5px] uppercase">
-            {mode === "forgot"
-              ? "ACCOUNT ACCESS"
-              : `${accountType === "business" ? "BUSINESS" : "INDIVIDUAL"} ACCOUNT`}
-          </span>
-          <h2 className="my-2 font-heading font-bold text-[21px] tracking-[-0.7px] text-center text-ink">
-            {mode === "signup" && stage > 1
-              ? stage === 2
-                ? "Verify your phone"
-                : stage === 3
-                  ? "Personal details"
-                  : stage === 4
-                    ? "Your address"
-                    : "Secure your account"
-              : heading}
-          </h2>
+
           {(mode === "signin" || (mode === "signup" && stage === 1)) && (
             <div
               className="auth-account-switch"
+              role="group"
               aria-label="Choose account type"
             >
               <button
@@ -279,47 +307,48 @@ export function AuthScreen({
                 className={accountType === "individual" ? "selected" : ""}
                 onClick={() => changeAccountType("individual")}
               >
-                <Icon name="user" size={16} /> Individual
+                <Icon name="user" size={15} /> Individual
               </button>
               <button
                 type="button"
                 className={accountType === "business" ? "selected" : ""}
                 onClick={() => changeAccountType("business")}
               >
-                <Icon name="building" size={16} /> Business
+                <Icon name="building" size={15} /> Business
               </button>
             </div>
           )}
+
           {mode === "signup" && (
             <div
               className="signup-progress"
-              aria-label={`Signup step ${stage} of 5`}
+              aria-label={`Signup step ${stage} of ${SIGNUP_STEPS.length}`}
             >
-              {["Contact", "Verify", "Profile", "Address", "Password"].map(
-                (label, index) => (
-                  <div
-                    className={
-                      stage === index + 1
-                        ? "active"
-                        : stage > index + 1
-                          ? "complete"
-                          : ""
-                    }
-                    key={label}
-                  >
-                    <i>{stage > index + 1 ? "✓" : `0${index + 1}`}</i>
-                    <span>{label}</span>
-                  </div>
-                ),
-              )}
+              {SIGNUP_STEPS.map((label, index) => (
+                <div
+                  className={
+                    stage === index + 1
+                      ? "active"
+                      : stage > index + 1
+                        ? "complete"
+                        : ""
+                  }
+                  key={label}
+                >
+                  <i>{stage > index + 1 ? "✓" : `0${index + 1}`}</i>
+                  <span>{label}</span>
+                </div>
+              ))}
             </div>
           )}
+
           {notice && (
-            <div className="notice success-notice flex items-center gap-2 p-3 border border-line border-l-[3px] border-l-ink bg-paper text-ink text-[9px] mb-3">
-              <Icon name="check" size={16} />
-              {notice}
+            <div className="notice success-notice auth-notice">
+              <Icon name="check" size={15} />
+              <span>{notice}</span>
             </div>
           )}
+
           <form
             onSubmit={submit}
             className={`auth-form ${mode === "signup" ? "auth-signup-form" : ""}`}
@@ -327,52 +356,60 @@ export function AuthScreen({
             {mode === "signup" && stage === 1 && (
               <>
                 {accountType === "business" && (
-                  <label className="grid gap-1.5 text-muted text-[8px] font-bold">
-                    Business name
+                  <div className="auth-field-row">
+                    <label>
+                      Business name
+                      <input
+                        required
+                        value={businessName}
+                        onChange={(e) => setBusinessName(e.target.value)}
+                        placeholder="e.g. Chima Ventures"
+                        autoComplete="organization"
+                      />
+                    </label>
+                    <label>
+                      Registration no.
+                      <input
+                        required
+                        value={businessRegistrationNumber}
+                        onChange={(e) =>
+                          setBusinessRegistrationNumber(e.target.value)
+                        }
+                        placeholder="e.g. RC 1234567"
+                        autoComplete="off"
+                      />
+                    </label>
+                  </div>
+                )}
+
+                <div className="auth-field-row">
+                  <label>
+                    {accountType === "business" ? "Your full name" : "Full name"}
                     <input
                       required
-                      value={businessName}
-                      onChange={(e) => setBusinessName(e.target.value)}
-                      placeholder="e.g. Chima Ventures"
-                      autoComplete="organization"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      placeholder="e.g. Chima Angwe"
+                      autoComplete="name"
                     />
                   </label>
-                )}
-                {accountType === "business" && (
-                  <label className="grid gap-1.5 text-muted text-[8px] font-bold">
-                    Company registration number
+                  <label>
+                    Email address
                     <input
                       required
-                      value={businessRegistrationNumber}
-                      onChange={(e) => setBusinessRegistrationNumber(e.target.value)}
-                      placeholder="e.g. RC 1234567"
-                      autoComplete="off"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      autoComplete="email"
                     />
                   </label>
-                )}
-                <label className="grid gap-1.5 text-muted text-[8px] font-bold">
-                  {accountType === "business" ? "Your full name" : "Full name"}
-                  <input
-                    required
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="e.g. Chima Angwe"
-                    autoComplete="name"
-                  />
-                </label>
-                <label className="grid gap-1.5 text-muted text-[8px] font-bold">
-                  Email address
-                  <input
-                    required
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@example.com"
-                    autoComplete="email"
-                  />
-                </label>
+                </div>
+
                 <div className="auth-phone-country-field">
-                  <label className="auth-phone-label text-muted text-[8px] font-bold">Phone number</label>
+                  <label className="auth-phone-label" htmlFor="signup-phone">
+                    Phone number
+                  </label>
                   <div className="auth-phone-country-control">
                     <div className="auth-phone-country-select">
                       <CountrySelect value={country} onChange={setCountry} />
@@ -380,29 +417,32 @@ export function AuthScreen({
                     <div className="auth-phone-input-wrap">
                       <span>{callingCodes[country] || "+"}</span>
                       <input
+                        id="signup-phone"
                         required
                         type="tel"
                         value={phone}
-                        onChange={(e) => setPhone(e.target.value.replace(/[^0-9 ]/g, ""))}
+                        onChange={(e) =>
+                          setPhone(e.target.value.replace(/[^0-9 ]/g, ""))
+                        }
                         placeholder="801 234 5678"
                         autoComplete="tel-national"
                       />
                     </div>
                   </div>
-                  <small className="auth-field-hint text-subtle text-[8px]">Your country will be the default for transfers.</small>
+                  <small className="auth-field-hint">
+                    Your selected country will be the default for transfers.
+                  </small>
                 </div>
               </>
             )}
+
             {mode === "signup" && stage === 2 && (
               <div className="otp-panel">
-                <span className="otp-icon inline-grid w-11 h-11 place-items-center border border-line rounded-full bg-soft text-ink mb-2">
-                  <Icon name="phone" size={22} />
+                <span className="otp-icon">
+                  <Icon name="phone" size={20} />
                 </span>
-                <p className="text-muted text-xs">
-                  Enter the 6-digit code sent to <strong>{phone}</strong>.
-                </p>
-                <label className="grid gap-1.5 text-muted text-[8px] font-bold">
-                  Verification code
+                <label>
+                  6-digit verification code
                   <input
                     required
                     inputMode="numeric"
@@ -414,79 +454,82 @@ export function AuthScreen({
                       setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
                     }
                     placeholder="000000"
-                    className="text-center font-mono tracking-widest text-base"
                   />
                 </label>
-                <small className="text-muted text-[8px]">
-                  Prototype code: <strong>123456</strong>
-                </small>
-                <button
-                  type="button"
-                  className="text-button otp-resend text-[9px] font-bold text-ink underline"
-                  onClick={() =>
-                    setNotice(`Demo code resent to ${phone}: 123456`)
-                  }
-                >
-                  Resend code
-                </button>
+                <div className="otp-meta">
+                  <small>
+                    Prototype code: <strong>123456</strong>
+                  </small>
+                  <button
+                    type="button"
+                    className="text-button otp-resend"
+                    onClick={() =>
+                      setNotice(
+                        `Demo code resent to ${formattedPhone || phone}: 123456`,
+                      )
+                    }
+                  >
+                    Resend code
+                  </button>
+                </div>
               </div>
             )}
+
             {mode === "signup" && stage === 3 && (
               <>
-                <label className="grid gap-1.5 text-muted text-[8px] font-bold">
-                  Date of birth
-                  <input
-                    required
-                    type="date"
-                    value={dateOfBirth}
-                    onChange={(e) => setDateOfBirth(e.target.value)}
-                  />
-                </label>
-                {accountType === "business" ? (
-                  <label className="grid gap-1.5 text-muted text-[8px] font-bold">
-                    Business type
-                    <select
+                <div className="auth-field-row">
+                  <label>
+                    Date of birth
+                    <input
                       required
-                      value={businessCategory}
-                      onChange={(e) => setBusinessCategory(e.target.value)}
-                    >
-                      <option value="">Choose a category</option>
-                      {[
-                        "Retail and trade",
-                        "Professional services",
-                        "Technology",
-                        "Logistics",
-                        "Other",
-                      ].map((item) => (
-                        <option key={item}>{item}</option>
-                      ))}
-                    </select>
+                      type="date"
+                      value={dateOfBirth}
+                      onChange={(e) => setDateOfBirth(e.target.value)}
+                    />
                   </label>
-                ) : (
-                  <label className="grid gap-1.5 text-muted text-[8px] font-bold">
-                    Occupation
-                    <select
-                      required
-                      value={occupation}
-                      onChange={(e) => setOccupation(e.target.value)}
-                    >
-                      <option value="">Choose your occupation</option>
-                      {[
-                        "Salaried employee",
-                        "Self-employed",
-                        "Student",
-                        "Other",
-                      ].map((item) => (
-                        <option key={item}>{item}</option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-              </>
-            )}
-            {mode === "signup" && stage === 4 && (
-              <>
-                <label className="grid gap-1.5 text-muted text-[8px] font-bold">
+                  {accountType === "business" ? (
+                    <label>
+                      Business type
+                      <select
+                        required
+                        value={businessCategory}
+                        onChange={(e) => setBusinessCategory(e.target.value)}
+                      >
+                        <option value="">Choose category</option>
+                        {[
+                          "Retail and trade",
+                          "Professional services",
+                          "Technology",
+                          "Logistics",
+                          "Other",
+                        ].map((item) => (
+                          <option key={item}>{item}</option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : (
+                    <label>
+                      Occupation
+                      <select
+                        required
+                        value={occupation}
+                        onChange={(e) => setOccupation(e.target.value)}
+                      >
+                        <option value="">Choose occupation</option>
+                        {[
+                          "Salaried employee",
+                          "Self-employed",
+                          "Student",
+                          "Other",
+                        ].map((item) => (
+                          <option key={item}>{item}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                </div>
+
+                <label className="auth-full-field">
                   Residential address
                   <input
                     required
@@ -495,66 +538,59 @@ export function AuthScreen({
                     placeholder="Street address and city"
                     autoComplete="street-address"
                   />
+                  <span className="signup-country-pill">
+                    <CountryBadge country={country} />
+                    <span>Default transfer country</span>
+                  </span>
                 </label>
-                <div className="signup-country-summary flex items-center gap-2 p-2.5 border border-line rounded bg-soft text-ink">
-                  <span className="signup-country-icon inline-grid w-6 h-6 place-items-center border border-line rounded-full bg-paper">
-                    <Icon name="check" size={17} />
-                  </span>
-                  <span className="grid gap-0.5">
-                    <strong>
-                      <CountryBadge country={country} />
-                    </strong>
-                    <small className="text-muted text-[8px]">
-                      Your selected country will be used as the default in
-                      transfers.
-                    </small>
-                  </span>
+
+                <div className="auth-field-row">
+                  <label>
+                    Create password
+                    <div className="password-wrap">
+                      <input
+                        required
+                        minLength={8}
+                        type={showPassword ? "text" : "password"}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="8+ characters"
+                        autoComplete="new-password"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((v) => !v)}
+                        aria-label={
+                          showPassword ? "Hide password" : "Show password"
+                        }
+                      >
+                        <Icon name={showPassword ? "eyeOff" : "eye"} size={16} />
+                      </button>
+                    </div>
+                  </label>
+
+                  <label>
+                    Confirm password
+                    <div className="password-wrap">
+                      <input
+                        required
+                        minLength={8}
+                        type={showPassword ? "text" : "password"}
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Re-enter password"
+                        autoComplete="new-password"
+                      />
+                    </div>
+                  </label>
                 </div>
               </>
             )}
-            {mode === "signup" && stage === 5 && (
-              <>
-                <label className="signup-password-field grid gap-1.5 text-muted text-[8px] font-bold">
-                  Create password
-                  <div className="password-wrap relative">
-                    <input
-                      required
-                      minLength={8}
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="At least 8 characters"
-                      autoComplete="new-password"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword((v) => !v)}
-                      aria-label={
-                        showPassword ? "Hide password" : "Show password"
-                      }
-                      className="absolute top-2 right-2.5 text-muted"
-                    >
-                      <Icon name="eye" size={17} />
-                    </button>
-                  </div>
-                </label>
-                <label className="signup-confirm-field grid gap-1.5 text-muted text-[8px] font-bold">
-                  Confirm password
-                  <input
-                    required
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Re-enter your password"
-                    autoComplete="new-password"
-                  />
-                </label>
-              </>
-            )}
+
             {(mode === "signin" || mode === "forgot") && (
               <>
                 {mode === "forgot" || accountType === "business" ? (
-                  <label className="grid gap-1.5 text-muted text-[8px] font-bold">
+                  <label>
                     Email address
                     <input
                       required
@@ -566,22 +602,32 @@ export function AuthScreen({
                     />
                   </label>
                 ) : (
-                  <label className="grid gap-1.5 text-muted text-[8px] font-bold">
+                  <label>
                     Phone number
                     <input
                       required
                       type="tel"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
-                      placeholder="Phone number"
+                      placeholder="+234 801 234 5678"
                       autoComplete="tel"
                     />
                   </label>
                 )}
+
                 {mode === "signin" && (
-                  <label className="grid gap-1.5 text-muted text-[8px] font-bold">
-                    Password
-                    <div className="password-wrap relative">
+                  <label>
+                    <span className="auth-label-row">
+                      <span>Password</span>
+                      <button
+                        type="button"
+                        className="forgot-link"
+                        onClick={() => switchMode("forgot")}
+                      >
+                        Forgot password?
+                      </button>
+                    </span>
+                    <div className="password-wrap">
                       <input
                         required
                         type={showPassword ? "text" : "password"}
@@ -596,136 +642,98 @@ export function AuthScreen({
                         aria-label={
                           showPassword ? "Hide password" : "Show password"
                         }
-                        className="absolute top-2 right-2.5 text-muted"
                       >
-                        <Icon name="eye" size={17} />
+                        <Icon name={showPassword ? "eyeOff" : "eye"} size={16} />
                       </button>
                     </div>
                   </label>
                 )}
-                {mode === "signin" && (
-                  <button
-                    type="button"
-                    className="forgot-link justify-self-end text-ink text-[8px] font-bold hover:underline"
-                    onClick={() => {
-                      setError("");
-                      setMode("forgot");
-                    }}
-                  >
-                    Forgot password?
-                  </button>
-                )}
               </>
             )}
-            {error && <div className="notice error-notice flex items-center gap-2 p-3 border border-line border-l-[3px] border-l-ink bg-paper text-ink text-[9px]">{error}</div>}
-            {mode === "signup" && stage > 1 && (
-              <button
-                type="button"
-                className="button button-quiet auth-back inline-flex min-h-[42px] items-center justify-center gap-2 px-4 rounded border border-line bg-transparent text-ink text-[10px] font-bold hover:bg-soft transition-colors"
-                onClick={() => {
-                  setError("");
-                  setNotice("");
-                  setStage(stage - 1);
-                }}
-              >
-                ← Back
-              </button>
+
+            {error && (
+              <div className="notice error-notice auth-notice" role="alert">
+                <span>{error}</span>
+              </div>
             )}
-            <button className="button button-primary auth-submit inline-flex min-h-[42px] items-center justify-center gap-2 px-4 rounded border border-transparent bg-ink text-inverse-text text-[10px] font-bold hover:opacity-90 transition-all cursor-pointer" type="submit">
-              {mode === "signup"
-                ? stage === 1
-                  ? "Send verification code"
-                  : stage === 2
-                    ? "Verify phone number"
-                    : stage === 5
-                      ? "Create account"
-                      : "Continue"
-                : mode === "forgot"
-                  ? "Send reset link"
-                  : "Sign in"}
-              <span>→</span>
-            </button>
+
+            <div className="auth-actions">
+              {mode === "signup" && stage > 1 && (
+                <button
+                  type="button"
+                  className="button button-quiet auth-back"
+                  onClick={() => {
+                    setError("");
+                    setNotice("");
+                    setStage(stage - 1);
+                  }}
+                >
+                  ← Back
+                </button>
+              )}
+              <button
+                className="button button-primary auth-submit"
+                type="submit"
+              >
+                {mode === "signup"
+                  ? stage === 1
+                    ? "Send code"
+                    : stage === 2
+                      ? "Verify & continue"
+                      : "Create account"
+                  : mode === "forgot"
+                    ? "Send reset link"
+                    : "Sign in"}
+                <span>→</span>
+              </button>
+            </div>
           </form>
-          {mode !== "forgot" && (
-            <div className="auth-switch text-center text-muted text-[8px] mt-4">
+
+          {mode !== "forgot" ? (
+            <div className="auth-switch">
               {mode === "signin" ? (
                 <>
                   New to Settle?{" "}
-                  <button
-                    type="button"
-                    className="text-ink font-bold hover:underline"
-                    onClick={() => {
-                      setError("");
-                      setNotice("");
-                      setStage(1);
-                      setMode("signup");
-                    }}
-                  >
+                  <button type="button" onClick={() => switchMode("signup")}>
                     Create an account
                   </button>
                 </>
               ) : stage === 1 ? (
                 <>
                   Already have an account?{" "}
-                  <button
-                    type="button"
-                    className="text-ink font-bold hover:underline"
-                    onClick={() => {
-                      setError("");
-                      setNotice("");
-                      setStage(1);
-                      setMode("signin");
-                    }}
-                  >
+                  <button type="button" onClick={() => switchMode("signin")}>
                     Sign in
                   </button>
                 </>
               ) : (
-                <button
-                  type="button"
-                  className="text-ink font-bold hover:underline"
-                  onClick={() => {
-                    setError("");
-                    setNotice("");
-                    setStage(1);
-                    setMode("signin");
-                  }}
-                >
+                <button type="button" onClick={() => switchMode("signin")}>
                   Return to sign in
                 </button>
               )}
             </div>
-          )}
-          {mode === "forgot" && (
-            <div className="auth-switch text-center text-muted text-[8px] mt-4">
-              <button
-                type="button"
-                className="text-ink font-bold hover:underline"
-                onClick={() => {
-                  setError("");
-                  setNotice("");
-                  setMode("signin");
-                }}
-              >
+          ) : (
+            <div className="auth-switch">
+              <button type="button" onClick={() => switchMode("signin")}>
                 Back to sign in
               </button>
             </div>
           )}
-          {mode !== "signup" || stage === 5 ? (
-            <div className="auth-legal text-center text-subtle text-[7px] leading-relaxed mt-4">
-              By continuing, you agree to our <a href="#terms" className="underline">Terms</a> and{" "}
-              <a href="#privacy" className="underline">Privacy Policy</a>.
+
+          {(mode !== "signup" || stage === 3) && (
+            <div className="auth-legal">
+              By continuing, you agree to our{" "}
+              <a href="#terms" className="underline">
+                Terms
+              </a>{" "}
+              and{" "}
+              <a href="#privacy" className="underline">
+                Privacy Policy
+              </a>
+              .
             </div>
-          ) : null}
+          )}
         </section>
-      </div>
-      <div className="auth-footer flex justify-between items-center text-subtle text-[8px] mt-auto pt-4 border-t border-line/40">
-        <span>© 2026 Settle Africa</span>
-        <span className="flex items-center gap-1.5">
-          <i className="secure-dot inline-block w-1.5 h-1.5 rounded-full bg-ink" /> Protected connection
-        </span>
-      </div>
+      </main>
     </div>
   );
 }
-

@@ -1,10 +1,6 @@
-import { useState, useMemo } from "react";
-import { CountryFlag } from "@/entities/country";
-import {
-  getExchangeRate,
-  SUPPORTED_SOURCE_CURRENCIES,
-  CORRIDOR_RECEIVE_CURRENCIES,
-} from "@/features/send-money";
+import { useState } from "react";
+import { CountryCurrencySelect, countryCurrencies } from "@/entities/country";
+import { getExchangeRate } from "@/features/send-money";
 
 export interface TransferCalculatorProps {
   onSend?: () => void;
@@ -12,21 +8,12 @@ export interface TransferCalculatorProps {
 }
 
 export function TransferCalculator({ className = "" }: TransferCalculatorProps) {
-  const currencies = useMemo(() => {
-    const map = new Map<string, (typeof SUPPORTED_SOURCE_CURRENCIES)[number]>();
-    for (const c of SUPPORTED_SOURCE_CURRENCIES) map.set(c.code, c);
-    for (const c of CORRIDOR_RECEIVE_CURRENCIES) {
-      if (!map.has(c.code)) map.set(c.code, c);
-    }
-    return Array.from(map.values());
-  }, []);
+  const [amount, setAmount] = useState("1000");
+  const [fromCountry, setFromCountry] = useState("Nigeria");
+  const [toCountry, setToCountry] = useState("Kenya");
 
-  const [amount, setAmount] = useState("100");
-  const [from, setFrom] = useState("USD");
-  const [to, setTo] = useState("NGN");
-
-  const fromMeta = currencies.find((item) => item.code === from) || currencies[0];
-  const toMeta = currencies.find((item) => item.code === to) || currencies[1];
+  const from = countryCurrencies[fromCountry] || "NGN";
+  const to = countryCurrencies[toCountry] || "KES";
 
   const rate = getExchangeRate(from, to);
   const numericAmount = parseFloat(amount) || 0;
@@ -39,8 +26,8 @@ export function TransferCalculator({ className = "" }: TransferCalculatorProps) 
     });
 
   const swap = () => {
-    setFrom(to);
-    setTo(from);
+    setFromCountry(toCountry);
+    setToCountry(fromCountry);
   };
 
   return (
@@ -53,7 +40,7 @@ export function TransferCalculator({ className = "" }: TransferCalculatorProps) 
         </h2>
       </div>
 
-      {/* Input 1: Amount & Source Currency */}
+      {/* Input 1: Amount & Source Country/Currency */}
       <div className="border border-line rounded-xl px-3 py-2.5 bg-paper flex items-center gap-2 focus-within:border-ink transition-colors">
         <input
           type="number"
@@ -65,20 +52,12 @@ export function TransferCalculator({ className = "" }: TransferCalculatorProps) 
           placeholder="0.00"
           className="w-full min-w-0 text-lg font-heading font-bold text-ink bg-transparent outline-none placeholder:text-subtle"
         />
-        <div className="flex items-center gap-1.5 pl-2 border-l border-line shrink-0">
-          <CountryFlag code={fromMeta.flagCode} country={fromMeta.country} />
-          <select
-            aria-label="From currency"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-            className="send-currency-inline bg-transparent font-semibold text-ink text-xs outline-none cursor-pointer"
-          >
-            {currencies.map((c) => (
-              <option key={c.code} value={c.code}>
-                {c.code}
-              </option>
-            ))}
-          </select>
+        <div className="pl-2 border-l border-line shrink-0">
+          <CountryCurrencySelect
+            country={fromCountry}
+            onChange={(nextCountry) => setFromCountry(nextCountry)}
+            ariaLabel="From African country and currency"
+          />
         </div>
       </div>
 
@@ -97,25 +76,17 @@ export function TransferCalculator({ className = "" }: TransferCalculatorProps) 
         </button>
       </div>
 
-      {/* Input 2 (Converted Output & Target Currency) */}
+      {/* Input 2: Converted Output & Target Country/Currency */}
       <div className="border border-line rounded-xl px-3 py-2.5 bg-soft flex items-center gap-2">
         <output className="w-full min-w-0 text-lg font-heading font-bold text-ink truncate">
           {formatAmount(converted)}
         </output>
-        <div className="flex items-center gap-1.5 pl-2 border-l border-line shrink-0">
-          <CountryFlag code={toMeta.flagCode} country={toMeta.country} />
-          <select
-            aria-label="To currency"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-            className="send-currency-inline bg-transparent font-semibold text-ink text-xs outline-none cursor-pointer"
-          >
-            {currencies.map((c) => (
-              <option key={c.code} value={c.code}>
-                {c.code}
-              </option>
-            ))}
-          </select>
+        <div className="pl-2 border-l border-line shrink-0">
+          <CountryCurrencySelect
+            country={toCountry}
+            onChange={(nextCountry) => setToCountry(nextCountry)}
+            ariaLabel="To African country and currency"
+          />
         </div>
       </div>
     </div>

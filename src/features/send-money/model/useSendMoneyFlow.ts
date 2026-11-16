@@ -11,6 +11,7 @@ import {
   DEFAULT_CONSUMER_LINKED_BANKS,
   CORRIDOR_BANKS,
   COUNTRY_TO_CURRENCY,
+  getCorridorBanks,
   type PersonalPaymentMethod,
   type ConsumerLinkedBank,
 } from "./data";
@@ -35,7 +36,8 @@ export interface UseSendMoneyFlowProps {
 }
 
 function parseUrlParams(recipients: Recipient[], targetRecipientId: number | null) {
-  let source = "USD";
+  let source = "NGN";
+  let sourceCountry = "Nigeria";
   let target = "NGN";
   let country = "Nigeria";
   let amt = "500";
@@ -51,13 +53,25 @@ function parseUrlParams(recipients: Recipient[], targetRecipientId: number | nul
     const amountParam = searchParams.get("amount");
     const bParam = searchParams.get("beneficiary");
 
-    if (sourceParam) source = sourceParam.toUpperCase();
-    if (targetParam) {
-      target = targetParam.toUpperCase();
-      const match = Object.keys(COUNTRY_TO_CURRENCY).find(
-        (c) => COUNTRY_TO_CURRENCY[c] === targetParam.toUpperCase()
+    if (sourceParam) {
+      const upperSource = sourceParam.toUpperCase();
+      const sourceMatch = Object.keys(COUNTRY_TO_CURRENCY).find(
+        (c) => COUNTRY_TO_CURRENCY[c] === upperSource
       );
-      if (match) country = match;
+      if (sourceMatch) {
+        source = upperSource;
+        sourceCountry = sourceMatch;
+      }
+    }
+    if (targetParam) {
+      const upperTarget = targetParam.toUpperCase();
+      const match = Object.keys(COUNTRY_TO_CURRENCY).find(
+        (c) => COUNTRY_TO_CURRENCY[c] === upperTarget
+      );
+      if (match) {
+        target = upperTarget;
+        country = match;
+      }
     }
     if (amountParam && !isNaN(parseFloat(amountParam))) {
       amt = amountParam;
@@ -72,17 +86,17 @@ function parseUrlParams(recipients: Recipient[], targetRecipientId: number | nul
     if (found) {
       country = found.country;
       target = COUNTRY_TO_CURRENCY[found.country] || "NGN";
-      bank = found.provider || CORRIDOR_BANKS[found.country]?.[0] || "";
+      bank = found.provider || getCorridorBanks(found.country)[0] || "";
       accNum = found.account.replace(/[^0-9]/g, "");
       accName = found.name;
     }
   }
 
   if (!bank) {
-    bank = CORRIDOR_BANKS[country]?.[0] || CORRIDOR_BANKS.Nigeria[0];
+    bank = getCorridorBanks(country)[0] || CORRIDOR_BANKS.Nigeria[0];
   }
 
-  return { source, target, country, amt, beneficiaryId, bank, accNum, accName };
+  return { source, sourceCountry, target, country, amt, beneficiaryId, bank, accNum, accName };
 }
 
 export function useSendMoneyFlow({
@@ -96,10 +110,10 @@ export function useSendMoneyFlow({
 }: UseSendMoneyFlowProps) {
   const initialParams = useMemo(() => {
     const parsed = parseUrlParams(recipients, targetRecipientId);
-    if (!targetRecipientId && defaultCountry) {
+    if (!targetRecipientId && defaultCountry && COUNTRY_TO_CURRENCY[defaultCountry]) {
       parsed.country = defaultCountry;
       parsed.target = COUNTRY_TO_CURRENCY[defaultCountry] || parsed.target;
-      parsed.bank = CORRIDOR_BANKS[defaultCountry]?.[0] || parsed.bank;
+      parsed.bank = getCorridorBanks(defaultCountry)[0] || parsed.bank;
     }
     return parsed;
   }, [recipients, targetRecipientId, defaultCountry]);
@@ -109,6 +123,7 @@ export function useSendMoneyFlow({
 
   // Step 1: Source & Amount Inputs
   const [amount, setAmount] = useState<string>(() => initialParams.amt);
+  const [sendCountry, setSendCountry] = useState<string>(() => initialParams.sourceCountry);
   const [sendCurrency, setSendCurrency] = useState<string>(() => initialParams.source);
   const [paymentMethod, setPaymentMethod] = useState<PersonalPaymentMethod>("bank");
 
@@ -177,7 +192,7 @@ export function useSendMoneyFlow({
     setTargetCountry(newCountry);
     const newCurr = COUNTRY_TO_CURRENCY[newCountry] || "NGN";
     setTargetCurrency(newCurr);
-    const banks = CORRIDOR_BANKS[newCountry] || CORRIDOR_BANKS.Nigeria;
+    const banks = getCorridorBanks(newCountry);
     setBankName(banks[0] || "");
     if (!selectedBeneficiaryId) {
       setAccountName("");
@@ -252,7 +267,7 @@ export function useSendMoneyFlow({
     setTargetCountry(beneficiary.country);
     const currency = COUNTRY_TO_CURRENCY[beneficiary.country] || "NGN";
     setTargetCurrency(currency);
-    setBankName(beneficiary.provider || CORRIDOR_BANKS[beneficiary.country]?.[0] || "");
+    setBankName(beneficiary.provider || getCorridorBanks(beneficiary.country)[0] || "");
     const cleanAcc = beneficiary.account.replace(/[^0-9]/g, "");
     setAccountNumber(cleanAcc.length >= 8 ? cleanAcc : "0123456789");
     setAccountName(beneficiary.name);
@@ -434,6 +449,8 @@ export function useSendMoneyFlow({
     setStep,
     amount,
     setAmount,
+    sendCountry,
+    setSendCountry,
     sendCurrency,
     setSendCurrency,
     paymentMethod,
