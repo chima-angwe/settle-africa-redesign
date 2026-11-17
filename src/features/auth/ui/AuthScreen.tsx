@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Icon, LogoMark } from "@/shared/ui";
-import { CountryBadge, CountrySelect, callingCodes } from "@/entities/country";
+import { CountrySelect, callingCodes } from "@/entities/country";
 import type { AccountType, Theme } from "@/shared/types";
 
 export interface AuthCompleteData {
@@ -175,17 +175,6 @@ export function AuthScreen({
         ? "Reset your password"
         : "Welcome back";
 
-  const subtitle =
-    mode === "signup"
-      ? stage === 1
-        ? "Choose your account type and enter your contact details."
-        : stage === 2
-          ? `Enter the 6-digit code sent to ${formattedPhone || phone}.`
-          : "Add your details and set a password to finish."
-      : mode === "forgot"
-        ? "We'll send password reset instructions to your email."
-        : "Sign in to manage your transfers and recipients.";
-
   const changeAccountType = (nextType: AccountType) => {
     onAccountTypeChange(nextType);
     setCountry(
@@ -213,34 +202,19 @@ export function AuthScreen({
           <LogoMark />
           <span className="brand-copy">
             <strong>Settle Africa</strong>
-            <small>MOVE MONEY, WITH CLARITY</small>
           </span>
         </a>
-        <div className="auth-top-actions">
-          <div className="auth-top-note">
-            <Icon name="shield" size={15} />
-            <span>Secure, private transfers</span>
-          </div>
-
-        </div>
       </header>
 
       <main
         className={`auth-layout ${mode === "signup" ? "auth-layout-signup" : ""}`}
       >
         <section className="auth-story" aria-hidden={mode === "signup"}>
-          <span className="eyebrow">
-            <i /> MONEY THAT MOVES WITH YOU
-          </span>
           <h1>
             Across borders.
             <br />
             <em>Without the guesswork.</em>
           </h1>
-          <p>
-            Send funds across Africa with transparent FX rates, upfront fees,
-            and live settlement tracking from start to payout.
-          </p>
 
           <div className="auth-story-points">
             <div>
@@ -249,7 +223,6 @@ export function AuthScreen({
               </span>
               <span>
                 <strong>Know before you send</strong>
-                <small>See your exact rate and fees upfront.</small>
               </span>
             </div>
             <div>
@@ -258,25 +231,23 @@ export function AuthScreen({
               </span>
               <span>
                 <strong>Follow every transfer</strong>
-                <small>Track your money from send to receive.</small>
               </span>
             </div>
           </div>
 
           <div className="auth-route">
-            <span className="route-circle">N</span>
-            <div>
-              <small>YOUR MONEY, ON ITS WAY</small>
+            <div className="route-track">
+              <span className="route-circle">N</span>
               <div className="route-line">
                 <b />
                 <b />
                 <b />
               </div>
-              <strong>
-                Nairobi <span>→</span> Lagos
-              </strong>
+              <span className="route-circle route-end">L</span>
             </div>
-            <span className="route-circle route-end">L</span>
+            <strong>
+              Nairobi <span>→</span> Lagos
+            </strong>
           </div>
         </section>
 
@@ -284,13 +255,7 @@ export function AuthScreen({
           className={`auth-card ${mode === "signup" ? `auth-card-signup signup-stage-${stage}` : ""}`}
         >
           <div className="auth-card-head">
-            <span className="auth-label">
-              {mode === "forgot"
-                ? "ACCOUNT ACCESS"
-                : `${accountType === "business" ? "BUSINESS" : "INDIVIDUAL"} ACCOUNT`}
-            </span>
             <h2>{heading}</h2>
-            <p className="auth-subtitle">{subtitle}</p>
           </div>
 
           {(mode === "signin" || (mode === "signup" && stage === 1)) && (
@@ -426,9 +391,6 @@ export function AuthScreen({
                       />
                     </div>
                   </div>
-                  <small className="auth-field-hint">
-                    Your selected country will be the default for transfers.
-                  </small>
                 </div>
               </>
             )}
@@ -535,10 +497,6 @@ export function AuthScreen({
                     placeholder="Street address and city"
                     autoComplete="street-address"
                   />
-                  <span className="signup-country-pill">
-                    <CountryBadge country={country} />
-                    <span>Default transfer country</span>
-                  </span>
                 </label>
 
                 <div className="auth-field-row">
@@ -713,20 +671,6 @@ export function AuthScreen({
               <button type="button" onClick={() => switchMode("signin")}>
                 Back to sign in
               </button>
-            </div>
-          )}
-
-          {(mode !== "signup" || stage === 3) && (
-            <div className="auth-legal">
-              By continuing, you agree to our{" "}
-              <a href="#terms" className="underline">
-                Terms
-              </a>{" "}
-              and{" "}
-              <a href="#privacy" className="underline">
-                Privacy Policy
-              </a>
-              .
             </div>
           )}
         </section>

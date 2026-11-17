@@ -18,6 +18,7 @@ export interface Transfer {
   feeCurrency?: string;
   exchangeRate?: number;
   description?: string;
+  schedule?: string;
 }
 
 export interface BulkDraft {

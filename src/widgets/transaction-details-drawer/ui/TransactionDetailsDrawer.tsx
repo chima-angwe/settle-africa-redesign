@@ -140,6 +140,12 @@ export function TransactionDetailsDrawer({
                   : "Rate unavailable"}
               </strong>
             </div>
+            {transfer.schedule && (
+              <div>
+                <span>Schedule</span>
+                <strong>{transfer.schedule}</strong>
+              </div>
+            )}
             {transfer.description && (
               <div>
                 <span>Description</span>
