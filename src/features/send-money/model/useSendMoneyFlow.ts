@@ -15,6 +15,11 @@ import {
   type PersonalPaymentMethod,
   type ConsumerLinkedBank,
 } from "./data";
+import {
+  getScheduleLabel,
+  getTomorrowIsoDate,
+  type ScheduleConfig,
+} from "./schedule";
 
 export type FlowStep = "from" | "to" | "review" | "processing" | "success" | "failed";
 
@@ -111,9 +116,10 @@ export function useSendMoneyFlow({
   const initialParams = useMemo(() => {
     const parsed = parseUrlParams(recipients, targetRecipientId);
     if (!targetRecipientId && defaultCountry && COUNTRY_TO_CURRENCY[defaultCountry]) {
-      parsed.country = defaultCountry;
-      parsed.target = COUNTRY_TO_CURRENCY[defaultCountry] || parsed.target;
-      parsed.bank = getCorridorBanks(defaultCountry)[0] || parsed.bank;
+      const nextTargetCountry = defaultCountry === "Nigeria" ? "Kenya" : defaultCountry;
+      parsed.country = nextTargetCountry;
+      parsed.target = COUNTRY_TO_CURRENCY[nextTargetCountry] || parsed.target;
+      parsed.bank = getCorridorBanks(nextTargetCountry)[0] || parsed.bank;
     }
     return parsed;
   }, [recipients, targetRecipientId, defaultCountry]);
@@ -153,6 +159,14 @@ export function useSendMoneyFlow({
 
   // Step 3: Review & Description
   const [description, setDescription] = useState<string>("");
+
+  // Scheduled payment options
+  const [schedule, setSchedule] = useState<ScheduleConfig>(() => ({
+    enabled: false,
+    mode: "now",
+    date: getTomorrowIsoDate(),
+    frequency: "Monthly",
+  }));
 
   // Processing & Execution State
   const [processingProgress, setProcessingProgress] = useState<number>(0);
@@ -252,8 +266,11 @@ export function useSendMoneyFlow({
       const cleanPhone = senderPhone.replace(/\D/g, "");
       if (cleanPhone.length < 8) return false;
     }
+    if (schedule.enabled && schedule.mode !== "now" && !schedule.date) {
+      return false;
+    }
     return true;
-  }, [numericAmount, paymentMethod, cardData, senderPhone]);
+  }, [numericAmount, paymentMethod, cardData, senderPhone, schedule]);
 
   const isToValid = useMemo(() => {
     const cleanNum = accountNumber.replace(/\D/g, "");
@@ -336,6 +353,8 @@ export function useSendMoneyFlow({
 
       // 90% probability -> success; 10% probability -> failed
       const isSuccess = Math.random() < SUCCESS_PROBABILITY;
+      const scheduleLabel = getScheduleLabel(schedule);
+      const isScheduledLater = schedule.enabled && schedule.mode === "later";
 
       const transferId = `ST-${Math.floor(100000 + Math.random() * 900000)}`;
       const newTransfer: Transfer = {
@@ -344,8 +363,8 @@ export function useSendMoneyFlow({
         country: targetCountry,
         amount: numericAmount,
         currency: sendCurrency,
-        status: isSuccess ? "Completed" : "Failed",
-        date: "Just now",
+        status: !isSuccess ? "Failed" : isScheduledLater ? "Pending" : "Completed",
+        date: scheduleLabel || "Just now",
         provider: bankName || clearingRail.settlementRailProtocol,
         method: paymentMethod === "bank" ? "Bank Direct Debit" : paymentMethod === "card" ? "Debit Card" : "Mobile Money",
         usdAmount: sendCurrency === "USD" ? numericAmount : undefined,
@@ -355,6 +374,7 @@ export function useSendMoneyFlow({
         feeCurrency: sendCurrency,
         exchangeRate: calculation.exchangeRate,
         description: description.trim() || `Transfer to ${accountName}`,
+        schedule: scheduleLabel,
       };
 
       if (isSuccess) {
@@ -424,11 +444,38 @@ export function useSendMoneyFlow({
     accountNumber,
     recipients,
     setRecipients,
+    schedule,
   ]);
 
   const retryTransfer = useCallback(() => {
     confirmTransfer();
   }, [confirmTransfer]);
+
+  const swapCountries = useCallback(() => {
+    const prevSendCountry = sendCountry;
+    const prevSendCurrency = sendCurrency;
+    const prevTargetCountry = targetCountry;
+    const prevTargetCurrency = targetCurrency;
+
+    const currentConverted = calculation.recipientReceives;
+    if (numericAmount > 0 && currentConverted > 0) {
+      const rounded = Number(currentConverted.toFixed(2));
+      setAmount(String(rounded));
+    }
+
+    setSendCountry(prevTargetCountry);
+    setSendCurrency(prevTargetCurrency);
+    handleCountryChange(prevSendCountry);
+    setTargetCurrency(prevSendCurrency);
+  }, [
+    sendCountry,
+    sendCurrency,
+    targetCountry,
+    targetCurrency,
+    calculation.recipientReceives,
+    numericAmount,
+    handleCountryChange,
+  ]);
 
   const resetFlow = useCallback(() => {
     setStep("from");
@@ -438,6 +485,12 @@ export function useSendMoneyFlow({
     setSelectedBeneficiaryId(null);
     setTargetRecipientId(null);
     setDescription("");
+    setSchedule({
+      enabled: false,
+      mode: "now",
+      date: getTomorrowIsoDate(),
+      frequency: "Monthly",
+    });
     setError(null);
     setCompletedTransfer(null);
     setProcessingProgress(0);
@@ -477,6 +530,8 @@ export function useSendMoneyFlow({
     setSaveBeneficiary,
     description,
     setDescription,
+    schedule,
+    setSchedule,
     processingProgress,
     processingMessage,
     error,
@@ -493,6 +548,7 @@ export function useSendMoneyFlow({
     goBack,
     confirmTransfer,
     retryTransfer,
+    swapCountries,
     resetFlow,
   };
 }

@@ -10,8 +10,12 @@ import {
   INITIAL_CORPORATE_FUNDING_SOURCES,
   STORAGE_KEYS,
   SUCCESS_PROBABILITY,
+  ScheduledPaymentControl,
+  getScheduleLabel,
+  getTomorrowIsoDate,
   resolveInterbankAccountName,
   type CorporateFundingSource,
+  type ScheduleConfig,
 } from "@/features/send-money";
 
 type BulkStep = "form" | "payment" | "processing" | "success" | "failed";
@@ -73,6 +77,12 @@ export function BulkTransfer({
   const [processingProgress, setProcessingProgress] = useState(0);
   const [processingMessage, setProcessingMessage] = useState("");
   const [isDragging, setIsDragging] = useState(false);
+  const [schedule, setSchedule] = useState<ScheduleConfig>(() => ({
+    enabled: false,
+    mode: "now",
+    date: getTomorrowIsoDate(),
+    frequency: "Monthly",
+  }));
 
   const fundingSources = useMemo<CorporateFundingSource[]>(() => {
     try {
@@ -338,6 +348,8 @@ export function BulkTransfer({
       setProcessingMessage("Confirming batch settlement...");
 
       const isSuccess = Math.random() < SUCCESS_PROBABILITY;
+      const scheduleLabel = getScheduleLabel(schedule);
+      const isScheduledLater = schedule.enabled && schedule.mode === "later";
       const now = Date.now();
       const id = "BT-" + String(now).slice(-7);
       const created: Transfer[] = rows.map((row, index) => {
@@ -352,8 +364,9 @@ export function BulkTransfer({
           provider: row.bank,
           method: selectedSource?.type === "corporate_card" ? "Corporate Card" : "Bank transfer",
           description: row.narration.trim() || undefined,
-          status: isSuccess ? "Completed" : "Failed",
-          date: "Just now",
+          schedule: scheduleLabel,
+          status: !isSuccess ? "Failed" : isScheduledLater ? "Pending" : "Completed",
+          date: scheduleLabel || "Just now",
         };
       });
 
@@ -383,6 +396,12 @@ export function BulkTransfer({
     setPaymentError("");
     setProcessingProgress(0);
     setProcessingMessage("");
+    setSchedule({
+      enabled: false,
+      mode: "now",
+      date: getTomorrowIsoDate(),
+      frequency: "Monthly",
+    });
     setStep("form");
   };
 
@@ -532,6 +551,14 @@ export function BulkTransfer({
                   })}
                 </span>
               </div>
+              {getScheduleLabel(schedule) && (
+                <div className="flex justify-between py-2.5">
+                  <span className="text-muted">Schedule</span>
+                  <span className="text-ink font-semibold">
+                    {getScheduleLabel(schedule)}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between py-3 font-bold text-ink text-sm">
                 <span>Total debit</span>
                 <span className="font-mono">
@@ -544,13 +571,20 @@ export function BulkTransfer({
               </div>
             </div>
 
+            <ScheduledPaymentControl value={schedule} onChange={setSchedule} />
+
             <div className="space-y-2.5 pt-1">
               <button
                 type="button"
                 onClick={executeBatchPayment}
-                className="button button-primary w-full h-11 rounded-xl text-xs sm:text-sm font-bold cursor-pointer"
+                disabled={schedule.enabled && schedule.mode !== "now" && !schedule.date}
+                className="button button-primary w-full h-11 rounded-xl text-xs sm:text-sm font-bold cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
               >
-                Make payment
+                {schedule.enabled && schedule.mode === "later"
+                  ? "Schedule batch payment"
+                  : schedule.enabled && schedule.mode === "recurring"
+                    ? "Set up recurring batch"
+                    : "Make payment"}
               </button>
               <button
                 type="button"
@@ -671,7 +705,9 @@ export function BulkTransfer({
       <div className="max-w-5xl mx-auto py-2 sm:py-6 px-4 space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <h1 className="text-2xl font-heading font-bold text-ink m-0">
-            Batch payment successful
+            {submitted[0]?.schedule
+              ? "Batch payment scheduled"
+              : "Batch payment successful"}
           </h1>
           <button
             type="button"
@@ -689,10 +725,12 @@ export function BulkTransfer({
             </span>
             <div>
               <strong className="text-sm font-bold text-ink block">
-                {batchId} · {submitted.length} payments completed
+                {batchId} · {submitted.length} payments{" "}
+                {submitted[0]?.schedule ? "scheduled" : "completed"}
               </strong>
               <span className="text-xs text-muted">
                 Paid via {selectedSource?.institutionName} ({selectedSource?.maskedNumber})
+                {submitted[0]?.schedule ? ` · ${submitted[0].schedule}` : ""}
               </span>
             </div>
           </div>

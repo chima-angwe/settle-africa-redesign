@@ -5,19 +5,60 @@ import { getExchangeRate } from "@/features/send-money";
 export interface TransferCalculatorProps {
   onSend?: () => void;
   className?: string;
+  amount?: string;
+  onAmountChange?: (value: string) => void;
+  fromCountry?: string;
+  onFromCountryChange?: (country: string, currency: string) => void;
+  toCountry?: string;
+  onToCountryChange?: (country: string, currency: string) => void;
+  onSwap?: () => void;
+  feeAmount?: number;
+  totalDebit?: number;
 }
 
-export function TransferCalculator({ className = "" }: TransferCalculatorProps) {
-  const [amount, setAmount] = useState("1000");
-  const [fromCountry, setFromCountry] = useState("Nigeria");
-  const [toCountry, setToCountry] = useState("Kenya");
+export function TransferCalculator({
+  className = "",
+  amount: controlledAmount,
+  onAmountChange,
+  fromCountry: controlledFromCountry,
+  onFromCountryChange,
+  toCountry: controlledToCountry,
+  onToCountryChange,
+  onSwap,
+}: TransferCalculatorProps) {
+  const [internalAmount, setInternalAmount] = useState("500");
+  const [internalFromCountry, setInternalFromCountry] = useState("Nigeria");
+  const [internalToCountry, setInternalToCountry] = useState("Kenya");
+
+  const amount = controlledAmount !== undefined ? controlledAmount : internalAmount;
+  const fromCountry =
+    controlledFromCountry !== undefined ? controlledFromCountry : internalFromCountry;
+  const toCountry =
+    controlledToCountry !== undefined ? controlledToCountry : internalToCountry;
+
+  const setAmount = (val: string) => {
+    if (onAmountChange) onAmountChange(val);
+    else setInternalAmount(val);
+  };
+
+  const setFromCountry = (country: string, currency: string) => {
+    if (onFromCountryChange) onFromCountryChange(country, currency);
+    else setInternalFromCountry(country);
+  };
+
+  const setToCountry = (country: string, currency: string) => {
+    if (onToCountryChange) onToCountryChange(country, currency);
+    else setInternalToCountry(country);
+  };
 
   const from = countryCurrencies[fromCountry] || "NGN";
   const to = countryCurrencies[toCountry] || "KES";
 
   const rate = getExchangeRate(from, to);
   const numericAmount = parseFloat(amount) || 0;
-  const converted = Math.max(0, numericAmount) * rate;
+  const safeAmount = Math.max(0, numericAmount);
+  const converted = safeAmount * rate;
+
 
   const formatAmount = (value: number, maxDecimals = 2) =>
     value.toLocaleString("en-US", {
@@ -25,9 +66,16 @@ export function TransferCalculator({ className = "" }: TransferCalculatorProps) 
       maximumFractionDigits: maxDecimals,
     });
 
-  const swap = () => {
-    setFromCountry(toCountry);
-    setToCountry(fromCountry);
+  const handleSwap = () => {
+    if (onSwap) {
+      onSwap();
+      return;
+    }
+    if (safeAmount > 0 && converted > 0) {
+      setInternalAmount(String(Number(converted.toFixed(2))));
+    }
+    setInternalFromCountry(toCountry);
+    setInternalToCountry(fromCountry);
   };
 
   return (
@@ -35,60 +83,94 @@ export function TransferCalculator({ className = "" }: TransferCalculatorProps) 
       className={`bg-paper border border-line rounded-2xl p-4 sm:p-5 shadow-subtle space-y-3 ${className}`}
     >
       <div className="flex items-center justify-between">
-        <h2 className="text-xs font-heading font-bold text-ink uppercase tracking-wider">
-          Calculator
+        <h2 className="text-xs font-heading font-bold text-ink uppercase tracking-wider m-0">
+          Swap
         </h2>
-      </div>
-
-      {/* Input 1: Amount & Source Country/Currency */}
-      <div className="border border-line rounded-xl px-3 py-2.5 bg-paper flex items-center gap-2 focus-within:border-ink transition-colors">
-        <input
-          type="number"
-          min="0"
-          step="any"
-          aria-label="Amount"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder="0.00"
-          className="w-full min-w-0 text-lg font-heading font-bold text-ink bg-transparent outline-none placeholder:text-subtle"
-        />
-        <div className="pl-2 border-l border-line shrink-0">
-          <CountryCurrencySelect
-            country={fromCountry}
-            onChange={(nextCountry) => setFromCountry(nextCountry)}
-            ariaLabel="From African country and currency"
-          />
-        </div>
-      </div>
-
-      {/* Rate & Swap Divider */}
-      <div className="flex items-center justify-between px-1">
         <span className="text-[11px] font-mono text-muted">
           1 {from} = {formatAmount(rate, rate < 1 ? 4 : 2)} {to}
         </span>
-        <button
-          type="button"
-          onClick={swap}
-          className="w-7 h-7 rounded-full border border-line bg-soft hover:border-ink text-ink text-xs flex items-center justify-center cursor-pointer transition-colors"
-          aria-label="Swap currencies"
+      </div>
+
+      {/* Input 1: Amount & Source Country/Currency */}
+      <div className="border border-line rounded-xl px-3 py-2.5 bg-paper focus-within:border-ink transition-colors">
+        <span className="text-[10px] font-medium text-muted block mb-1">
+          Sending ({fromCountry})
+        </span>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min="0"
+            step="any"
+            aria-label="Sending amount"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="0.00"
+            className="w-full min-w-0 text-lg font-heading font-bold text-ink bg-transparent outline-none placeholder:text-subtle"
+          />
+          <div className="pl-2 border-l border-line shrink-0">
+            <CountryCurrencySelect
+              country={fromCountry}
+              onChange={setFromCountry}
+              ariaLabel="From African country and currency"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Two-Arrow Inline Swap (not a button) */}
+      <div className="flex items-center justify-center -my-1">
+        <span
+          role="button"
+          tabIndex={0}
+          onClick={handleSwap}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              handleSwap();
+            }
+          }}
+          aria-label="Swap sending and receiving countries"
+          title="Swap currencies"
+          className="inline-flex items-center justify-center p-1 text-muted hover:text-ink cursor-pointer select-none transition-transform hover:scale-110 active:scale-95"
         >
-          ↕
-        </button>
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="m3 16 4 4 4-4" />
+            <path d="M7 20V4" />
+            <path d="m21 8-4-4-4 4" />
+            <path d="M17 4v16" />
+          </svg>
+        </span>
       </div>
 
       {/* Input 2: Converted Output & Target Country/Currency */}
-      <div className="border border-line rounded-xl px-3 py-2.5 bg-soft flex items-center gap-2">
-        <output className="w-full min-w-0 text-lg font-heading font-bold text-ink truncate">
-          {formatAmount(converted)}
-        </output>
-        <div className="pl-2 border-l border-line shrink-0">
-          <CountryCurrencySelect
-            country={toCountry}
-            onChange={(nextCountry) => setToCountry(nextCountry)}
-            ariaLabel="To African country and currency"
-          />
+      <div className="border border-line rounded-xl px-3 py-2.5 bg-soft">
+        <span className="text-[10px] font-medium text-muted block mb-1">
+          Receiving ({toCountry})
+        </span>
+        <div className="flex items-center gap-2">
+          <output className="w-full min-w-0 text-lg font-heading font-bold text-ink truncate">
+            {formatAmount(converted)}
+          </output>
+          <div className="pl-2 border-l border-line shrink-0">
+            <CountryCurrencySelect
+              country={toCountry}
+              onChange={setToCountry}
+              ariaLabel="To African country and currency"
+            />
+          </div>
         </div>
       </div>
+
     </div>
   );
 }
