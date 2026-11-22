@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import type { Page } from "@/shared/types";
+import type { Transfer } from "@/entities/transfer";
 import {
   loadLinkedBankBalances,
   LocalBankBalanceSummary,
@@ -10,9 +11,16 @@ import {
 export interface WalletPageProps {
   country: string;
   setPage: (page: Page) => void;
+  onRecordTransfer?: (transfer: Transfer) => void;
+  onBeforeSubmit?: () => boolean;
 }
 
-export function WalletPage({ country, setPage }: WalletPageProps) {
+export function WalletPage({
+  country,
+  setPage,
+  onRecordTransfer,
+  onBeforeSubmit,
+}: WalletPageProps) {
   const [banks, setBanks] = useState<LinkedBankBalance[]>(() =>
     loadLinkedBankBalances(country)
   );
@@ -50,6 +58,9 @@ export function WalletPage({ country, setPage }: WalletPageProps) {
         <AirtimePurchaseCard
           country={country}
           banks={banks}
+          setPage={setPage}
+          onRecordTransfer={onRecordTransfer}
+          onBeforeSubmit={onBeforeSubmit}
           onLinkBankClick={() => setPage("Linked banks")}
           onBack={() => setPage("Dashboard")}
         />

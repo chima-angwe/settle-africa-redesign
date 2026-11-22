@@ -22,6 +22,9 @@ export function Track({ transfers }: { transfers: Transfer[] }) {
   };
   const completed = result?.status === "Completed";
   const processing = result?.status === "Processing";
+  const failed = result?.status === "Failed";
+  const cancelled = result?.status === "Cancelled";
+  const terminated = failed || cancelled;
   return (
     <>
       <PageHeading title="Track a transfer" />
@@ -87,23 +90,43 @@ export function Track({ transfers }: { transfers: Transfer[] }) {
               </div>
             </div>
             <div
-              className={`timeline-item ${completed ? "complete" : "current"}`}
+              className={`timeline-item ${completed ? "complete" : terminated ? "" : "current"}`}
             >
-              <span>{completed ? <Icon name="check" size={13} /> : <i />}</span>
+              <span>{completed ? <Icon name="check" size={13} /> : terminated ? <Icon name="close" size={12} /> : <i />}</span>
               <div>
                 <strong>
                   {completed
                     ? "Transfer completed"
-                    : processing
-                      ? "Transfer processing"
-                      : "Awaiting processing"}
+                    : failed
+                      ? "Transfer failed"
+                      : cancelled
+                        ? "Transfer cancelled"
+                        : processing
+                          ? "Transfer processing"
+                          : "Awaiting processing"}
                 </strong>
+                {failed && (
+                  <small>
+                    {result.failureReason || "Partner clearing rail declined or timed out."}
+                  </small>
+                )}
+                {cancelled && (
+                  <small>
+                    {result.cancellationReason || "Cancelled before settlement."}
+                  </small>
+                )}
               </div>
             </div>
             <div className={`timeline-item ${completed ? "complete" : ""}`}>
               <span>{completed ? <Icon name="check" size={13} /> : <i />}</span>
               <div>
-                <strong>Recipient delivery</strong>
+                <strong>
+                  {terminated
+                    ? "Delivery not completed"
+                    : result.method === "Cash pickup"
+                      ? "Ready for cash pickup"
+                      : "Recipient delivery"}
+                </strong>
               </div>
             </div>
           </div>

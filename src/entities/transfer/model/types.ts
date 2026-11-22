@@ -1,4 +1,4 @@
-export type TransferStatus = "Pending" | "Completed" | "Processing" | "Failed";
+export type TransferStatus = "Pending" | "Completed" | "Processing" | "Failed" | "Cancelled";
 
 export interface Transfer {
   id: string;
@@ -19,6 +19,12 @@ export interface Transfer {
   exchangeRate?: number;
   description?: string;
   schedule?: string;
+  failureReason?: string;
+  cancellationReason?: string;
+  pickupCode?: string;
+  pickupCity?: string;
+  recipientPhone?: string;
+  deliveryInstructions?: string;
 }
 
 export interface BulkDraft {
@@ -28,4 +34,3 @@ export interface BulkDraft {
   account: string;
   amount: string;
 }
-

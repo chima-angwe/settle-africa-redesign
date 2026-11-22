@@ -1,12 +1,21 @@
+import { useEffect, useState } from "react";
 import { StatCard, QuickAction } from "@/shared/ui";
 import { RateMarquee } from "@/widgets/rate-marquee";
 import { TransferTable } from "@/widgets/transfer-table";
+import {
+  DashboardErrorState,
+  DashboardListSkeleton,
+  DashboardStatsSkeleton,
+} from "@/widgets/dashboard-overview";
 import type { Transfer } from "@/entities/transfer";
 import type { Page } from "@/shared/types";
 
 export interface DashboardPageProps {
   name: string;
   transfers: Transfer[];
+  recipientsCount?: number;
+  loadError?: string | null;
+  onRetryLoad?: () => void;
   setPage: (page: Page) => void;
   onSelectTransfer: (transfer: Transfer) => void;
 }
@@ -14,10 +23,29 @@ export interface DashboardPageProps {
 export function DashboardPage({
   name,
   transfers,
+  recipientsCount = 0,
+  loadError = null,
+  onRetryLoad,
   setPage,
   onSelectTransfer,
 }: DashboardPageProps) {
   const firstName = name.split(" ")[0];
+  const [isLoading, setIsLoading] = useState(true);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setIsLoading(false), 180);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const activeError = loadError || localError;
+
+  const handleRetry = () => {
+    setLocalError(null);
+    setIsLoading(true);
+    onRetryLoad?.();
+    window.setTimeout(() => setIsLoading(false), 180);
+  };
 
   const totalUsd = transfers.reduce(
     (sum, item) =>
@@ -35,6 +63,9 @@ export function DashboardPage({
   const inProgressCount = transfers.filter(
     (item) => item.status === "Pending" || item.status === "Processing",
   ).length;
+  const failedCount = transfers.filter((item) => item.status === "Failed").length;
+  const pendingActionsCount =
+    inProgressCount + failedCount + (recipientsCount === 0 ? 1 : 0) + 1;
 
   return (
     <>
@@ -44,37 +75,52 @@ export function DashboardPage({
         </h1>
       </div>
 
-      {/* Minimal Metric Grid */}
-      <div className="stat-grid grid grid-cols-2 lg:grid-cols-4 gap-0 border border-line bg-paper rounded-2xl overflow-hidden">
-        <StatCard
-          label="Transfer limit"
-          value="₦1,000,000"
-          icon="card"
-        />
-        <StatCard
-          label="Sent this month"
-          value={`$${totalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-          icon="send"
-        />
-        <StatCard
-          label="In progress"
-          value={`${inProgressCount} ${inProgressCount === 1 ? "transfer" : "transfers"}`}
-          icon="clock"
-        />
-        <StatCard
-          label="Account status"
-          value="Unverified"
-          icon="shield"
-        />
-      </div>
+      {activeError && (
+        <DashboardErrorState message={activeError} onRetry={handleRetry} />
+      )}
 
-      {/* Two Prominent Quick Action Buttons */}
-      <div className="grid grid-cols-2 gap-3 mb-6">
+      {/* Minimal Metric Grid */}
+      {isLoading ? (
+        <DashboardStatsSkeleton />
+      ) : (
+        <div className="stat-grid grid grid-cols-2 lg:grid-cols-4 gap-0 border border-line bg-paper rounded-2xl overflow-hidden">
+          <StatCard
+            label="Transfer limit"
+            value="₦1,000,000"
+            icon="card"
+          />
+          <StatCard
+            label="Sent this month"
+            value={`$${totalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            icon="send"
+          />
+          <StatCard
+            label="In progress"
+            value={`${inProgressCount} ${inProgressCount === 1 ? "transfer" : "transfers"}`}
+            icon="clock"
+          />
+          <StatCard
+            label="Pending actions"
+            value={`${pendingActionsCount} ${pendingActionsCount === 1 ? "action" : "actions"}`}
+            icon="shield"
+            onClick={() => setPage("Notifications")}
+          />
+        </div>
+      )}
+
+      {/* Entry Points: Send Money, Manage Recipients, Wallet */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
         <QuickAction
           icon="send"
           title="Send money"
           variant="primary"
           onClick={() => setPage("Send money")}
+        />
+        <QuickAction
+          icon="users"
+          title="Manage recipients"
+          variant="secondary"
+          onClick={() => setPage("Recipients")}
         />
         <QuickAction
           icon="wallet"
@@ -83,8 +129,6 @@ export function DashboardPage({
           onClick={() => setPage("Wallet")}
         />
       </div>
-
-
 
       <RateMarquee />
 
@@ -101,10 +145,25 @@ export function DashboardPage({
             View all <span>→</span>
           </button>
         </div>
-        <TransferTable
-          transfers={transfers.slice(0, 3)}
-          onSelect={onSelectTransfer}
-        />
+        {isLoading ? (
+          <DashboardListSkeleton rows={3} />
+        ) : (
+          <TransferTable
+            transfers={transfers.slice(0, 3)}
+            onSelect={onSelectTransfer}
+            emptyTitle="No transfers yet"
+            emptySubtitle="Start a local or cross-border transfer to see your recent activity here."
+            emptyAction={
+              <button
+                type="button"
+                className="button button-primary button-small px-4 py-2 text-xs font-semibold rounded-xl cursor-pointer"
+                onClick={() => setPage("Send money")}
+              >
+                Send money
+              </button>
+            }
+          />
+        )}
       </section>
     </>
   );

@@ -1,5 +1,8 @@
 import { useState, useId, useRef, useEffect } from "react";
 import { Icon } from "@/shared/ui";
+import { formatTransferTimestamp } from "@/shared/lib";
+import type { Transfer } from "@/entities/transfer";
+import type { Page } from "@/shared/types";
 import type {
   LinkedBankBalance,
   AirtimeTransaction,
@@ -23,6 +26,9 @@ export interface AirtimePurchaseCardProps {
   banks: LinkedBankBalance[];
   initialMode?: TopupMode;
   onSuccess?: (tx: AirtimeTransaction) => void;
+  onRecordTransfer?: (transfer: Transfer) => void;
+  onBeforeSubmit?: () => boolean;
+  setPage?: (page: Page) => void;
   onLinkBankClick?: () => void;
   onBack?: () => void;
 }
@@ -34,21 +40,33 @@ const PLAN_CATEGORIES: Array<"All" | DataPlanCategory> = [
   "Monthly",
 ];
 
+const SUPPORTED_TOPUP_COUNTRIES = Object.keys(COUNTRY_CURRENCY_MAP);
+
 export function AirtimePurchaseCard({
   country,
   banks,
   initialMode = "airtime",
   onSuccess,
+  onRecordTransfer,
+  onBeforeSubmit,
+  setPage,
   onLinkBankClick,
   onBack,
 }: AirtimePurchaseCardProps) {
+  const countrySelectId = useId();
   const phoneInputId = useId();
   const amountInputId = useId();
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const isSubmittingRef = useRef(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const countryInfo = COUNTRY_CURRENCY_MAP[country] || COUNTRY_CURRENCY_MAP.Nigeria;
+  const [selectedCountry, setSelectedCountry] = useState<string>(() =>
+    COUNTRY_CURRENCY_MAP[country] ? country : "Nigeria",
+  );
+  const countryInfo =
+    COUNTRY_CURRENCY_MAP[selectedCountry] || COUNTRY_CURRENCY_MAP.Nigeria;
   const currency = countryInfo.code;
-  const operators = COUNTRY_OPERATORS[country] || COUNTRY_OPERATORS.Nigeria;
+  const operators = COUNTRY_OPERATORS[selectedCountry] || COUNTRY_OPERATORS.Nigeria;
   const presets = PRESET_AMOUNTS[currency] || PRESET_AMOUNTS.NGN;
   const minAmount = presets[0] || 50;
   const dataPlans = getDataPlans(currency);
@@ -65,9 +83,17 @@ export function AirtimePurchaseCard({
     return defaultBank?.id || "";
   });
 
-  const [status, setStatus] = useState<"idle" | "processing" | "success">("idle");
+  const [step, setStep] = useState<"form" | "review" | "processing" | "success">(
+    "form",
+  );
   const [latestTx, setLatestTx] = useState<AirtimeTransaction | null>(null);
   const [error, setError] = useState<string>("");
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!dropdownOpen) return;
@@ -96,14 +122,9 @@ export function AirtimePurchaseCard({
   const hasInsufficientBalance = selectedBank
     ? selectedBank.balance < purchaseAmount
     : true;
-  const isSelectionValid =
-    mode === "data" ? Boolean(selectedPlan) : numericAmount >= minAmount;
-  const isFormValid =
-    isPhoneValid &&
-    Boolean(activeOperator) &&
-    isSelectionValid &&
-    !hasInsufficientBalance &&
-    Boolean(selectedBank);
+  const formattedPhone = phone.trim().startsWith("+")
+    ? phone.trim()
+    : `${countryInfo.prefix} ${phone.trim()}`;
 
   const handleModeSwitch = (nextMode: TopupMode) => {
     if (nextMode === mode) return;
@@ -111,36 +132,62 @@ export function AirtimePurchaseCard({
     setError("");
   };
 
-  const handleContinue = () => {
-    if (!selectedBank) {
-      setError("Select an account");
-      return;
+  const handleCountryChange = (nextCountry: string) => {
+    setSelectedCountry(nextCountry);
+    const nextOperators = COUNTRY_OPERATORS[nextCountry] || [];
+    if (!nextOperators.some((op) => op.name === selectedOperator)) {
+      setSelectedOperator("");
     }
-    if (!isPhoneValid) {
-      setError("Enter a valid phone number");
+    setSelectedPlanId("");
+    setDropdownOpen(false);
+    setError("");
+  };
+
+  const handleGoToReview = () => {
+    if (!selectedBank) {
+      setError("Select a linked account to pay from.");
       return;
     }
     if (!activeOperator) {
-      setError("Choose a network provider");
+      setError("Choose a supported network operator.");
+      return;
+    }
+    if (!isPhoneValid) {
+      setError("Enter a valid phone number (at least 7 digits).");
       return;
     }
     if (mode === "airtime" && numericAmount < minAmount) {
-      setError(`Minimum amount is ${countryInfo.symbol}${minAmount}`);
+      setError(`Minimum airtime amount is ${countryInfo.symbol}${minAmount}.`);
       return;
     }
     if (mode === "data" && !selectedPlan) {
-      setError("Select a data plan");
+      setError("Select a data plan to continue.");
       return;
     }
     if (hasInsufficientBalance) {
-      setError("Insufficient balance");
+      setError("Insufficient balance on the selected account.");
+      return;
+    }
+    setError("");
+    setStep("review");
+  };
+
+  const handleConfirmPay = () => {
+    if (onBeforeSubmit && !onBeforeSubmit()) return;
+    if (isSubmittingRef.current || step === "processing" || step === "success") {
+      return;
+    }
+    if (!selectedBank) {
+      setError("Select a linked account to pay from.");
+      setStep("form");
       return;
     }
 
+    isSubmittingRef.current = true;
     setError("");
-    setStatus("processing");
+    setStep("processing");
 
-    setTimeout(() => {
+    timerRef.current = setTimeout(() => {
       const updatedBanks = banks.map((b) => {
         if (b.id === selectedBank.id) {
           return {
@@ -154,15 +201,16 @@ export function AirtimePurchaseCard({
 
       const prefix = mode === "data" ? "DAT" : "AIR";
       const refId = `${prefix}-${Math.floor(10000 + Math.random() * 90000)}`;
+      const timestamp = formatTransferTimestamp();
       const newTx: AirtimeTransaction = {
         id: refId,
         type: mode,
         operator: activeOperator,
-        phoneNumber: phone,
+        phoneNumber: formattedPhone,
         amount: purchaseAmount,
         currency,
         bankName: selectedBank.bank,
-        date: "Just now",
+        date: timestamp,
         reference: `REF-${refId}-${selectedBank.account}`,
         status: "Completed",
         ...(mode === "data" && selectedPlan
@@ -176,16 +224,44 @@ export function AirtimePurchaseCard({
       const existingHistory = loadAirtimeHistory();
       saveAirtimeHistory([newTx, ...existingHistory]);
 
-      setLatestTx(newTx);
-      setStatus("success");
-      if (onSuccess) {
-        onSuccess(newTx);
+      if (onRecordTransfer) {
+        onRecordTransfer({
+          id: refId,
+          name:
+            mode === "data" && selectedPlan
+              ? `${activeOperator} ${selectedPlan.dataAmount}`
+              : `${activeOperator} Airtime`,
+          country: selectedCountry,
+          amount: purchaseAmount,
+          currency,
+          status: "Completed",
+          date: timestamp,
+          provider: `${activeOperator} (${selectedBank.bank})`,
+          method: mode === "data" ? "Data top-up" : "Airtime top-up",
+          recipientAmount: purchaseAmount,
+          recipientCurrency: currency,
+          feeAmount: 0,
+          feeCurrency: currency,
+          exchangeRate: 1,
+          recipientPhone: formattedPhone,
+          description:
+            mode === "data" && selectedPlan
+              ? `${selectedPlan.dataAmount} (${selectedPlan.validity}) for ${formattedPhone}`
+              : `Airtime top-up for ${formattedPhone}`,
+        });
       }
-    }, 1000);
+
+      isSubmittingRef.current = false;
+      setLatestTx(newTx);
+      setStep("success");
+      onSuccess?.(newTx);
+    }, 900);
   };
 
   const handleReset = () => {
-    setStatus("idle");
+    if (timerRef.current) clearTimeout(timerRef.current);
+    isSubmittingRef.current = false;
+    setStep("form");
     setLatestTx(null);
     setPhone("");
     setSelectedOperator("");
@@ -214,7 +290,21 @@ export function AirtimePurchaseCard({
     );
   }
 
-  if (status === "success" && latestTx) {
+  if (step === "processing") {
+    return (
+      <div className="bg-paper border border-line rounded-2xl p-8 shadow-subtle text-center space-y-3">
+        <div className="w-10 h-10 mx-auto rounded-full border-2 border-line border-t-ink animate-spin" />
+        <h3 className="text-sm font-heading font-bold text-ink">
+          Processing top-up
+        </h3>
+        <p className="text-xs text-muted">
+          Delivering {mode === "data" ? "data plan" : "airtime"} via {activeOperator}...
+        </p>
+      </div>
+    );
+  }
+
+  if (step === "success" && latestTx) {
     const isDataTx = latestTx.type === "data";
     return (
       <div className="bg-paper border border-line rounded-2xl p-6 sm:p-8 shadow-subtle space-y-5">
@@ -225,9 +315,29 @@ export function AirtimePurchaseCard({
           <h3 className="text-base font-heading font-bold text-ink">
             {isDataTx ? "Data plan activated" : "Airtime sent"}
           </h3>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-[11px] font-semibold">
+            <Icon name="check" size={12} />
+            <span>{latestTx.status}</span>
+          </span>
         </div>
 
         <div className="p-4 bg-soft rounded-xl border border-line/70 space-y-2 text-xs">
+          <div className="flex justify-between items-center text-muted">
+            <span>Reference</span>
+            <strong className="text-ink font-mono">{latestTx.id}</strong>
+          </div>
+          <div className="flex justify-between items-center text-muted">
+            <span>Country</span>
+            <strong className="text-ink font-medium">{selectedCountry}</strong>
+          </div>
+          <div className="flex justify-between items-center text-muted">
+            <span>Network</span>
+            <strong className="text-ink font-medium">{latestTx.operator}</strong>
+          </div>
+          <div className="flex justify-between items-center text-muted">
+            <span>Phone</span>
+            <strong className="text-ink font-mono">{latestTx.phoneNumber}</strong>
+          </div>
           {isDataTx && latestTx.planName && (
             <div className="flex justify-between items-center text-muted">
               <span>Data plan</span>
@@ -238,34 +348,121 @@ export function AirtimePurchaseCard({
             </div>
           )}
           <div className="flex justify-between items-center text-muted">
-            <span>Amount</span>
+            <span>Total paid (0% fee)</span>
             <strong className="text-ink font-bold font-mono">
               {formatCurrencyValue(latestTx.amount, latestTx.currency)}
             </strong>
           </div>
-          <div className="flex justify-between items-center text-muted">
-            <span>Phone</span>
-            <strong className="text-ink font-mono">{latestTx.phoneNumber}</strong>
-          </div>
-          <div className="flex justify-between items-center text-muted">
-            <span>Network</span>
-            <strong className="text-ink font-medium">{latestTx.operator}</strong>
-          </div>
           <div className="flex justify-between items-center text-muted pt-2 border-t border-line">
-            <span>Balance</span>
+            <span>Remaining balance</span>
             <strong className="text-ink font-bold font-mono">
               {formatCurrencyValue(selectedBank?.balance ?? 0, currency)}
             </strong>
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={handleReset}
-          className="button button-primary w-full h-11 text-xs font-bold rounded-xl cursor-pointer"
-        >
-          Buy again
-        </button>
+        <div className="space-y-2">
+          {setPage && (
+            <button
+              type="button"
+              onClick={() => setPage("Transactions")}
+              className="button button-secondary w-full h-10 text-xs font-semibold rounded-xl cursor-pointer"
+            >
+              View in transactions
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleReset}
+            className="button button-primary w-full h-11 text-xs font-bold rounded-xl cursor-pointer"
+          >
+            Buy again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === "review") {
+    return (
+      <div className="space-y-4">
+        <div className="bg-paper border border-line rounded-2xl p-5 sm:p-6 shadow-subtle space-y-5">
+          <div>
+            <h3 className="text-base font-heading font-bold text-ink m-0">
+              Review cost & confirm
+            </h3>
+            <p className="text-xs text-muted mt-1 m-0">
+              Confirm your {mode === "data" ? "data plan" : "airtime"} top-up details before paying.
+            </p>
+          </div>
+
+          <div className="p-4 bg-soft rounded-xl border border-line/70 space-y-2.5 text-xs">
+            <div className="flex justify-between items-center text-muted">
+              <span>Country</span>
+              <strong className="text-ink font-medium">{selectedCountry}</strong>
+            </div>
+            <div className="flex justify-between items-center text-muted">
+              <span>Operator</span>
+              <strong className="text-ink font-medium">{activeOperator}</strong>
+            </div>
+            <div className="flex justify-between items-center text-muted">
+              <span>Phone number</span>
+              <strong className="text-ink font-mono">{formattedPhone}</strong>
+            </div>
+            {mode === "data" && selectedPlan && (
+              <div className="flex justify-between items-center text-muted">
+                <span>Data plan</span>
+                <strong className="text-ink font-semibold">
+                  {selectedPlan.dataAmount} · {selectedPlan.validity}
+                </strong>
+              </div>
+            )}
+            <div className="flex justify-between items-center text-muted">
+              <span>Top-up amount</span>
+              <strong className="text-ink font-mono">
+                {formatCurrencyValue(purchaseAmount, currency)}
+              </strong>
+            </div>
+            <div className="flex justify-between items-center text-muted">
+              <span>Service fee</span>
+              <strong className="text-ink font-mono">
+                {formatCurrencyValue(0, currency)} (0%)
+              </strong>
+            </div>
+            <div className="flex justify-between items-center text-muted">
+              <span>Pay from</span>
+              <strong className="text-ink font-medium">
+                {selectedBank?.bank} (•••• {selectedBank?.account})
+              </strong>
+            </div>
+            <div className="flex justify-between items-center text-ink pt-2.5 border-t border-line font-bold">
+              <span>Total cost</span>
+              <span className="font-mono text-sm">
+                {formatCurrencyValue(purchaseAmount, currency)}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 pt-1">
+          <button
+            type="button"
+            onClick={() => setStep("form")}
+            className="h-10 px-4 border border-line rounded-xl bg-paper text-ink text-xs font-semibold hover:bg-soft transition-colors cursor-pointer inline-flex items-center gap-1.5"
+          >
+            <Icon name="chevron" size={14} className="rotate-180" />
+            <span>Back</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleConfirmPay}
+            className="button button-primary h-10 px-6 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+          >
+            <span>Pay {formatCurrencyValue(purchaseAmount, currency)}</span>
+            <Icon name="chevron" size={14} />
+          </button>
+        </div>
       </div>
     );
   }
@@ -311,7 +508,111 @@ export function AirtimePurchaseCard({
           </div>
         )}
 
-        {/* 1. Phone Number */}
+        {/* Country & Operator Row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <label
+              htmlFor={countrySelectId}
+              className="text-xs font-bold text-ink block"
+            >
+              Country
+            </label>
+            <select
+              id={countrySelectId}
+              value={selectedCountry}
+              onChange={(e) => handleCountryChange(e.target.value)}
+              className="w-full h-11 px-3.5 border border-line rounded-xl bg-paper text-ink text-xs sm:text-sm font-medium outline-none focus:border-ink cursor-pointer"
+            >
+              {SUPPORTED_TOPUP_COUNTRIES.map((c) => {
+                const info = COUNTRY_CURRENCY_MAP[c];
+                return (
+                  <option key={c} value={c}>
+                    {c} ({info.code})
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          <div className="space-y-1.5" ref={dropdownRef}>
+            <label className="text-xs font-bold text-ink block">
+              Network Provider
+            </label>
+            <div className="relative">
+              <button
+                type="button"
+                aria-expanded={dropdownOpen}
+                onClick={() => setDropdownOpen((o) => !o)}
+                className={`w-full h-11 px-3.5 border rounded-xl bg-paper flex items-center justify-between gap-2 text-left text-xs sm:text-sm outline-none transition-colors cursor-pointer ${
+                  dropdownOpen ? "border-ink" : "border-line hover:border-ink/50"
+                }`}
+              >
+                {selectedOperatorObj ? (
+                  <span className="flex items-center gap-2.5 min-w-0">
+                    <OperatorLogo
+                      operator={selectedOperatorObj.name}
+                      code={selectedOperatorObj.code}
+                      size={22}
+                    />
+                    <span className="font-medium text-ink truncate">
+                      {selectedOperatorObj.name}
+                    </span>
+                  </span>
+                ) : (
+                  <span className="text-muted">Choose operator</span>
+                )}
+                <Icon
+                  name="chevron"
+                  size={15}
+                  className={`text-muted shrink-0 transition-transform ${
+                    dropdownOpen ? "-rotate-90" : "rotate-90"
+                  }`}
+                />
+              </button>
+
+              {dropdownOpen && (
+                <div
+                  role="listbox"
+                  className="absolute z-40 left-0 right-0 top-[calc(100%+6px)] bg-paper border border-line rounded-xl shadow-card overflow-hidden divide-y divide-line/60"
+                >
+                  {operators.map((op) => {
+                    const isSel = selectedOperator === op.name;
+                    return (
+                      <button
+                        key={op.code}
+                        type="button"
+                        role="option"
+                        aria-selected={isSel}
+                        onClick={() => {
+                          setSelectedOperator(op.name);
+                          setDropdownOpen(false);
+                          setError("");
+                        }}
+                        className={`w-full px-3.5 py-2.5 flex items-center justify-between gap-3 text-left text-xs sm:text-sm hover:bg-soft transition-colors cursor-pointer ${
+                          isSel ? "bg-soft font-semibold text-ink" : "text-ink"
+                        }`}
+                      >
+                        <span className="flex items-center gap-2.5 min-w-0">
+                          <OperatorLogo
+                            operator={op.name}
+                            code={op.code}
+                            size={22}
+                          />
+                          <span>{op.name}</span>
+                        </span>
+                        {isSel && (
+                          <Icon name="check" size={14} className="text-ink shrink-0" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Phone Number */}
         <div className="space-y-1.5">
           <label
             htmlFor={phoneInputId}
@@ -319,98 +620,25 @@ export function AirtimePurchaseCard({
           >
             Phone Number
           </label>
-          <input
-            id={phoneInputId}
-            type="tel"
-            value={phone}
-            onChange={(e) => {
-              setPhone(e.target.value);
-              setError("");
-            }}
-            placeholder="08012345678"
-            className="w-full h-11 px-3.5 border border-line rounded-xl bg-paper text-sm font-mono text-ink outline-none focus:border-ink placeholder:text-muted/60 transition-colors"
-          />
-        </div>
-
-        {/* 2. Network Provider Dropdown with Operator Logos */}
-        <div className="space-y-1.5" ref={dropdownRef}>
-          <label className="text-xs font-bold text-ink block">
-            Network Provider
-          </label>
-          <div className="relative">
-            <button
-              type="button"
-              aria-expanded={dropdownOpen}
-              onClick={() => setDropdownOpen((o) => !o)}
-              className={`w-full h-11 px-3.5 border rounded-xl bg-paper flex items-center justify-between gap-2 text-left text-xs sm:text-sm outline-none transition-colors cursor-pointer ${
-                dropdownOpen ? "border-ink" : "border-line hover:border-ink/50"
-              }`}
-            >
-              {selectedOperatorObj ? (
-                <span className="flex items-center gap-2.5 min-w-0">
-                  <OperatorLogo
-                    operator={selectedOperatorObj.name}
-                    code={selectedOperatorObj.code}
-                    size={22}
-                  />
-                  <span className="font-medium text-ink truncate">
-                    {selectedOperatorObj.name}
-                  </span>
-                </span>
-              ) : (
-                <span className="text-muted">Choose network provider</span>
-              )}
-              <Icon
-                name="chevron"
-                size={15}
-                className={`text-muted shrink-0 transition-transform ${
-                  dropdownOpen ? "-rotate-90" : "rotate-90"
-                }`}
-              />
-            </button>
-
-            {dropdownOpen && (
-              <div
-                role="listbox"
-                className="absolute z-40 left-0 right-0 top-[calc(100%+6px)] bg-paper border border-line rounded-xl shadow-card overflow-hidden divide-y divide-line/60"
-              >
-                {operators.map((op) => {
-                  const isSel = selectedOperator === op.name;
-                  return (
-                    <button
-                      key={op.code}
-                      type="button"
-                      role="option"
-                      aria-selected={isSel}
-                      onClick={() => {
-                        setSelectedOperator(op.name);
-                        setDropdownOpen(false);
-                        setError("");
-                      }}
-                      className={`w-full px-3.5 py-2.5 flex items-center justify-between gap-3 text-left text-xs sm:text-sm hover:bg-soft transition-colors cursor-pointer ${
-                        isSel ? "bg-soft font-semibold text-ink" : "text-ink"
-                      }`}
-                    >
-                      <span className="flex items-center gap-2.5 min-w-0">
-                        <OperatorLogo
-                          operator={op.name}
-                          code={op.code}
-                          size={22}
-                        />
-                        <span>{op.name}</span>
-                      </span>
-                      {isSel && (
-                        <Icon name="check" size={14} className="text-ink shrink-0" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+          <div className="flex items-center h-11 px-3.5 border border-line rounded-xl bg-paper focus-within:border-ink transition-colors">
+            <span className="text-xs font-mono font-semibold text-muted mr-2 select-none shrink-0">
+              {countryInfo.prefix}
+            </span>
+            <input
+              id={phoneInputId}
+              type="tel"
+              value={phone}
+              onChange={(e) => {
+                setPhone(e.target.value.replace(/[^0-9+ ]/g, ""));
+                setError("");
+              }}
+              placeholder="801 234 5678"
+              className="w-full bg-transparent border-0 outline-none text-sm font-mono text-ink placeholder:text-muted/60"
+            />
           </div>
         </div>
 
-        {/* 3 & 4. Airtime Amount OR Data Plan Selection */}
+        {/* Airtime Amount OR Data Plan Selection */}
         {mode === "airtime" ? (
           <>
             <div className="space-y-1.5">
@@ -521,7 +749,6 @@ export function AirtimePurchaseCard({
               })}
             </div>
 
-            {/* Dummy Data Plans Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {filteredPlans.map((plan) => {
                 const isSel = selectedPlanId === plan.id;
@@ -568,7 +795,7 @@ export function AirtimePurchaseCard({
           </div>
         )}
 
-        {/* 5. Account Selector */}
+        {/* Account Selector */}
         {banks.length > 1 && (
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold text-muted uppercase tracking-wider block">
@@ -592,7 +819,7 @@ export function AirtimePurchaseCard({
         )}
       </div>
 
-      {/* Bottom Action Bar (< Back / Continue >) */}
+      {/* Bottom Action Bar (< Back / Review cost >) */}
       <div className="flex items-center justify-between gap-3 pt-1">
         <button
           type="button"
@@ -605,25 +832,11 @@ export function AirtimePurchaseCard({
 
         <button
           type="button"
-          disabled={status === "processing" || !isFormValid}
-          onClick={handleContinue}
-          className="button button-primary h-10 px-6 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:pointer-events-none transition-all"
+          onClick={handleGoToReview}
+          className="button button-primary h-10 px-6 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-all"
         >
-          {status === "processing" ? (
-            <>
-              <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-              <span>Processing...</span>
-            </>
-          ) : (
-            <>
-              <span>
-                {mode === "data" && selectedPlan
-                  ? `Buy ${selectedPlan.dataAmount}`
-                  : "Continue"}
-              </span>
-              <Icon name="chevron" size={14} />
-            </>
-          )}
+          <span>Review cost</span>
+          <Icon name="chevron" size={14} />
         </button>
       </div>
     </div>

@@ -1,5 +1,12 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Page, AccountType, Theme } from "@/shared/types";
+import {
+  clearSession,
+  getSession,
+  isSessionExpired,
+  refreshSession,
+  startSession,
+} from "@/shared/lib";
 import type { Recipient } from "@/entities/recipient";
 import { initialRecipients, businessRecipients } from "@/entities/recipient";
 import {
@@ -12,6 +19,7 @@ import {
 import {
   INITIAL_CORPORATE_FUNDING_SOURCES,
   STORAGE_KEYS,
+  type RetryTransferDraft,
 } from "@/features/send-money";
 
 import { Sidebar } from "@/widgets/sidebar";
@@ -28,8 +36,66 @@ import { TransactionsPage } from "@/pages/transactions";
 import { TrackTransactionPage } from "@/pages/track-transaction";
 import { LinkedBanksPage } from "@/pages/linked-banks";
 import { ProfilePage } from "@/pages/profile";
+import type { ProfileTab } from "@/features/manage-profile/ui/Profile";
 import { WalletPage } from "@/pages/wallet";
 import { NotificationsPage } from "@/pages/notifications";
+
+function readStoredAccountData(): {
+  data: Record<AccountType, { recipients: Recipient[]; transfers: Transfer[] }>;
+  error: string | null;
+} {
+  try {
+    const resetFlag = "settle-demo-transfers-empty-v1";
+    if (localStorage.getItem(resetFlag) !== "true") {
+      localStorage.setItem(resetFlag, "true");
+      localStorage.setItem("settle-demo-individual-transfers", "[]");
+      localStorage.setItem("settle-demo-transfers", "[]");
+      localStorage.setItem("settle-demo-business-transfers", "[]");
+    }
+
+    const safeParse = <T,>(raw: string | null, fallback: T): T => {
+      if (!raw || raw === "null") return fallback;
+      return JSON.parse(raw) || fallback;
+    };
+
+    return {
+      data: {
+        individual: {
+          recipients: safeParse(
+            localStorage.getItem(STORAGE_KEYS.BENEFICIARIES) ||
+              localStorage.getItem("settle-demo-individual-recipients") ||
+              localStorage.getItem("settle-demo-recipients"),
+            initialRecipients,
+          ),
+          transfers: safeParse(
+            localStorage.getItem("settle-demo-individual-transfers") ||
+              localStorage.getItem("settle-demo-transfers"),
+            initialTransfers,
+          ),
+        },
+        business: {
+          recipients: safeParse(
+            localStorage.getItem("settle-demo-business-recipients"),
+            businessRecipients,
+          ),
+          transfers: safeParse(
+            localStorage.getItem("settle-demo-business-transfers"),
+            businessTransfers,
+          ),
+        },
+      },
+      error: null,
+    };
+  } catch {
+    return {
+      data: {
+        individual: { recipients: initialRecipients, transfers: initialTransfers },
+        business: { recipients: businessRecipients, transfers: businessTransfers },
+      },
+      error: "Some saved transfer history could not be read from browser storage.",
+    };
+  }
+}
 
 export function App() {
   const [page, setPage] = useState<Page>("Dashboard");
@@ -46,9 +112,23 @@ export function App() {
   const [theme, setTheme] = useState<Theme>(() =>
     localStorage.getItem("settle-demo-theme") === "dark" ? "dark" : "light",
   );
-  const [signedIn, setSignedIn] = useState(
-    () => localStorage.getItem("settle-demo-user") === "true",
-  );
+  const [signedIn, setSignedIn] = useState(() => {
+    if (localStorage.getItem("settle-demo-user") !== "true") return false;
+    if (isSessionExpired()) {
+      clearSession();
+      return false;
+    }
+    if (!getSession()) {
+      startSession();
+    }
+    return true;
+  });
+  const [sessionNotice, setSessionNotice] = useState(() => {
+    if (localStorage.getItem("settle-demo-user") === "true" && isSessionExpired()) {
+      return "Your session has expired. Please sign in again.";
+    }
+    return "";
+  });
   const [authMode, setAuthMode] = useState<"signin" | "signup" | "forgot">(
     "signin",
   );
@@ -61,45 +141,19 @@ export function App() {
     return savedName;
   });
 
+  const [initialStorageSnapshot] = useState(() => readStoredAccountData());
+  const [dataLoadError, setDataLoadError] = useState<string | null>(
+    () => initialStorageSnapshot.error,
+  );
   const [accountData, setAccountData] = useState<
     Record<AccountType, { recipients: Recipient[]; transfers: Transfer[] }>
-  >(() => {
-    const resetFlag = "settle-demo-transfers-empty-v1";
-    if (localStorage.getItem(resetFlag) !== "true") {
-      localStorage.setItem(resetFlag, "true");
-      localStorage.setItem("settle-demo-individual-transfers", "[]");
-      localStorage.setItem("settle-demo-transfers", "[]");
-      localStorage.setItem("settle-demo-business-transfers", "[]");
-    }
+  >(() => initialStorageSnapshot.data);
 
-    return {
-      individual: {
-        recipients:
-          JSON.parse(
-            localStorage.getItem(STORAGE_KEYS.BENEFICIARIES) ||
-              localStorage.getItem("settle-demo-individual-recipients") ||
-              localStorage.getItem("settle-demo-recipients") ||
-              "null",
-          ) || initialRecipients,
-        transfers:
-          JSON.parse(
-            localStorage.getItem("settle-demo-individual-transfers") ||
-              localStorage.getItem("settle-demo-transfers") ||
-              "null",
-          ) || initialTransfers,
-      },
-      business: {
-        recipients:
-          JSON.parse(
-            localStorage.getItem("settle-demo-business-recipients") || "null",
-          ) || businessRecipients,
-        transfers:
-          JSON.parse(
-            localStorage.getItem("settle-demo-business-transfers") || "null",
-          ) || businessTransfers,
-      },
-    };
-  });
+  const loadStoredAccountData = useCallback(() => {
+    const next = readStoredAccountData();
+    setDataLoadError(next.error);
+    return next.data;
+  }, []);
 
   const { recipients, transfers } = accountData[accountType];
 
@@ -134,6 +188,9 @@ export function App() {
   const [mobileNav, setMobileNav] = useState(false);
   const [query, setQuery] = useState("");
   const [activeTransfer, setActiveTransfer] = useState<Transfer | null>(null);
+  const [profileTab, setProfileTab] = useState<ProfileTab>("Profile");
+  const [supportTransferRef, setSupportTransferRef] = useState("");
+  const [retryDraft, setRetryDraft] = useState<RetryTransferDraft | null>(null);
   const [targetRecipientId, setTargetRecipientId] = useState<number | null>(
     null,
   );
@@ -194,10 +251,64 @@ export function App() {
     }
   }, [accountType, transfers]);
 
+  const lastActivityRefreshRef = useRef(0);
+
+  const expireSession = useCallback((message: string) => {
+    clearSession();
+    setSignedIn(false);
+    setAuthMode("signin");
+    setSessionNotice(message);
+    setActiveTransfer(null);
+  }, []);
+
+  const ensureActiveSession = useCallback(() => {
+    if (isSessionExpired()) {
+      expireSession("Your session expired. Please sign in again to continue.");
+      return false;
+    }
+    refreshSession();
+    return true;
+  }, [expireSession]);
+
   useEffect(() => {
-    if (signedIn) localStorage.setItem("settle-demo-user", "true");
-    else localStorage.removeItem("settle-demo-user");
-  }, [signedIn]);
+    if (!signedIn) return;
+    if (!getSession()) {
+      startSession();
+    }
+
+    const handleActivity = () => {
+      const now = Date.now();
+      if (now - lastActivityRefreshRef.current < 15000) return;
+      lastActivityRefreshRef.current = now;
+      if (isSessionExpired()) {
+        expireSession("Your session has expired due to inactivity. Please sign in again.");
+      } else {
+        refreshSession();
+      }
+    };
+
+    const checkExpiry = () => {
+      if (isSessionExpired()) {
+        expireSession("Your session has expired due to inactivity. Please sign in again.");
+      }
+    };
+
+    const interval = window.setInterval(checkExpiry, 10000);
+    window.addEventListener("pointerdown", handleActivity);
+    window.addEventListener("keydown", handleActivity);
+    window.addEventListener("focus", checkExpiry);
+    window.addEventListener("storage", checkExpiry);
+    document.addEventListener("visibilitychange", checkExpiry);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("pointerdown", handleActivity);
+      window.removeEventListener("keydown", handleActivity);
+      window.removeEventListener("focus", checkExpiry);
+      window.removeEventListener("storage", checkExpiry);
+      document.removeEventListener("visibilitychange", checkExpiry);
+    };
+  }, [signedIn, expireSession]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -218,9 +329,69 @@ export function App() {
   };
 
   const handleLogout = () => {
+    clearSession();
+    setSessionNotice("");
     setSignedIn(false);
     setAuthMode("signin");
   };
+
+  const openHelp = useCallback(() => {
+    setSupportTransferRef("");
+    setProfileTab("Help & support");
+    setPage("Profile");
+  }, []);
+
+  const handleContactSupport = useCallback((transfer: Transfer) => {
+    setActiveTransfer(null);
+    setSupportTransferRef(transfer.id);
+    setProfileTab("Help & support");
+    setPage("Profile");
+  }, []);
+
+  const handleCancelTransfer = useCallback(
+    (transfer: Transfer) => {
+      const reason = "Cancelled by sender before settlement.";
+      setAccountData((current) => ({
+        ...current,
+        [accountType]: {
+          ...current[accountType],
+          transfers: current[accountType].transfers.map((item) =>
+            item.id === transfer.id
+              ? { ...item, status: "Cancelled", cancellationReason: reason }
+              : item,
+          ),
+        },
+      }));
+      setActiveTransfer((current) =>
+        current && current.id === transfer.id
+          ? { ...current, status: "Cancelled", cancellationReason: reason }
+          : current,
+      );
+    },
+    [accountType],
+  );
+
+  const handleRetryTransfer = useCallback((transfer: Transfer) => {
+    const methodKey =
+      transfer.method === "Cash pickup"
+        ? "cash"
+        : transfer.method === "Mobile money" || transfer.method === "M-Pesa"
+          ? "mobile"
+          : "bank";
+    setRetryDraft({
+      amount: String(transfer.amount),
+      targetCountry: transfer.country,
+      payoutMethod: methodKey,
+      bankName: transfer.provider || "",
+      accountName: transfer.name,
+      pickupCity: transfer.pickupCity,
+      recipientPhone: transfer.recipientPhone,
+      description: transfer.description,
+    });
+    setTargetRecipientId(null);
+    setActiveTransfer(null);
+    setPage("Send money");
+  }, []);
 
   if (!signedIn) {
     return (
@@ -235,6 +406,8 @@ export function App() {
           localStorage.getItem(`settle-demo-${accountType}-country`) ||
           "Nigeria"
         }
+        sessionNotice={sessionNotice}
+        onClearSessionNotice={() => setSessionNotice("")}
         onComplete={({
           accountType: selectedType,
           country,
@@ -290,6 +463,8 @@ export function App() {
             setAuthMode("signin");
             setSignedIn(false);
           } else {
+            startSession();
+            setSessionNotice("");
             setSignedIn(true);
           }
         }}
@@ -297,16 +472,35 @@ export function App() {
     );
   }
 
+  const hasActiveNotifications =
+    (accountType === "business" && pendingApprovalCount > 0) ||
+    transfers.some(
+      (t) =>
+        t.status === "Pending" ||
+        t.status === "Processing" ||
+        t.status === "Failed",
+    );
+
   return (
     <div className="portal">
       <Sidebar
         page={page}
-        setPage={setPage}
+        setPage={(nextPage) => {
+          if (nextPage === "Profile") {
+            setProfileTab("Profile");
+          }
+          setPage(nextPage);
+        }}
         accountType={accountType}
         mobileNav={mobileNav}
         setMobileNav={setMobileNav}
         onLogout={handleLogout}
-        onClearTargetRecipient={() => setTargetRecipientId(null)}
+        onClearTargetRecipient={() => {
+          setTargetRecipientId(null);
+          setRetryDraft(null);
+        }}
+        onOpenHelp={openHelp}
+        isHelpActive={profileTab === "Help & support"}
       />
       <main className="main-area">
         <Topbar
@@ -319,9 +513,7 @@ export function App() {
           businessName={businessName}
           onSwitchAccount={switchAccount}
           onOpenNotifications={() => setPage("Notifications")}
-          hasNotificationDot={
-            accountType === "business" && pendingApprovalCount > 0
-          }
+          hasNotificationDot={hasActiveNotifications}
         />
         <div className="page-content">
           {page === "Dashboard" &&
@@ -329,6 +521,9 @@ export function App() {
               <BusinessDashboardPage
                 businessName={businessName}
                 transfers={transfers}
+                recipientsCount={recipients.length}
+                loadError={dataLoadError}
+                onRetryLoad={() => setAccountData(loadStoredAccountData())}
                 setPage={(nextPage) => {
                   if (nextPage === "Send money") setTargetRecipientId(null);
                   setPage(nextPage);
@@ -339,6 +534,9 @@ export function App() {
               <DashboardPage
                 name={name}
                 transfers={transfers}
+                recipientsCount={recipients.length}
+                loadError={dataLoadError}
+                onRetryLoad={() => setAccountData(loadStoredAccountData())}
                 setPage={(nextPage) => {
                   if (nextPage === "Send money") setTargetRecipientId(null);
                   setPage(nextPage);
@@ -353,12 +551,17 @@ export function App() {
                 "Nigeria"
               }
               setPage={setPage}
+              onBeforeSubmit={ensureActiveSession}
+              onRecordTransfer={(newTransfer) =>
+                setTransfers((current) => [newTransfer, ...current])
+              }
             />
           )}
           {page === "Send money" && (
             <SendMoneyPage
               recipients={recipients}
               targetRecipientId={targetRecipientId}
+              retryDraft={retryDraft}
               defaultCountry={
                 localStorage.getItem(`settle-demo-${accountType}-country`) ||
                 "Nigeria"
@@ -367,6 +570,8 @@ export function App() {
               setRecipients={setRecipients}
               transfers={transfers}
               setTransfers={setTransfers}
+              onBeforeSubmit={ensureActiveSession}
+              onContactSupport={handleContactSupport}
               setPage={setPage}
             />
           )}
@@ -374,6 +579,7 @@ export function App() {
             <BulkTransferPage
               setTransfers={setTransfers}
               onTrackTransfer={setActiveTransfer}
+              onBeforeSubmit={ensureActiveSession}
             />
           )}
           {page === "Recipients" && (
@@ -412,10 +618,25 @@ export function App() {
               }
               onLogout={handleLogout}
               accountType={accountType}
+              activeTab={profileTab}
+              onTabChange={setProfileTab}
+              supportTransferRef={supportTransferRef}
+              onClearSupportTransferRef={() => setSupportTransferRef("")}
+              transfers={transfers}
             />
           )}
           {page === "Notifications" && (
-            <NotificationsPage accountType={accountType} />
+            <NotificationsPage
+              accountType={accountType}
+              transfers={transfers}
+              recipientsCount={recipients.length}
+              setPage={setPage}
+              onSelectTransfer={setActiveTransfer}
+              onOpenPreferences={() => {
+                setProfileTab("Notifications");
+                setPage("Profile");
+              }}
+            />
           )}
           {page === "Linked banks" && (
             <LinkedBanksPage
@@ -432,6 +653,9 @@ export function App() {
         <TransactionDetailsDrawer
           transfer={activeTransfer}
           onClose={() => setActiveTransfer(null)}
+          onContactSupport={handleContactSupport}
+          onCancelTransfer={handleCancelTransfer}
+          onRetryTransfer={handleRetryTransfer}
         />
       )}
     </div>

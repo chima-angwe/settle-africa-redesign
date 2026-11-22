@@ -360,8 +360,81 @@ export const COUNTRY_TO_CURRENCY: Record<string, string> = {
   ...countryCurrencies,
 };
 
+export type DeliveryMethodKey = "bank" | "mobile" | "cash";
+
+export const CASH_PICKUP_AGENTS: Record<string, string[]> = {
+  Nigeria: ["MoneyGram Nigeria", "Western Union", "Ria Cash Pickup"],
+  Kenya: ["Western Union Kenya", "MoneyGram", "Posta Kenya Cash"],
+  Ghana: ["MoneyGram Ghana", "Western Union", "Ria Cash Pickup"],
+  "South Africa": ["Mukuru Cash Pickup", "MoneyGram", "Western Union"],
+  Egypt: ["Western Union Egypt", "MoneyGram", "Fawry Cash Pickup"],
+  Uganda: ["Western Union Uganda", "MoneyGram", "Ria Cash Pickup"],
+  Rwanda: ["MoneyGram Rwanda", "Western Union", "Ria Cash Pickup"],
+  Tanzania: ["Western Union Tanzania", "MoneyGram", "Ria Cash Pickup"],
+};
+
+const DEFAULT_CASH_PICKUP_AGENTS = [
+  "MoneyGram",
+  "Western Union",
+  "Ria Cash Pickup",
+];
+
 export function getCorridorBanks(country: string): string[] {
   return CORRIDOR_BANKS[country] || payoutOptions[country]?.banks || CORRIDOR_BANKS.Nigeria;
+}
+
+export function getPayoutWallets(country: string): string[] {
+  return payoutOptions[country]?.wallets || [];
+}
+
+export function getCashPickupAgents(country: string): string[] {
+  return CASH_PICKUP_AGENTS[country] || DEFAULT_CASH_PICKUP_AGENTS;
+}
+
+export function getPayoutProviders(
+  country: string,
+  payoutMethod: DeliveryMethodKey = "bank",
+): string[] {
+  if (payoutMethod === "mobile") {
+    const wallets = getPayoutWallets(country);
+    if (wallets.length > 0) return wallets;
+  }
+  if (payoutMethod === "cash") {
+    return getCashPickupAgents(country);
+  }
+  return getCorridorBanks(country);
+}
+
+export function getDeliveryMethodAvailability(country: string) {
+  const banks = getCorridorBanks(country);
+  const wallets = getPayoutWallets(country);
+  const agents = getCashPickupAgents(country);
+  return {
+    bank: banks.length > 0,
+    mobile: wallets.length > 0,
+    cash: agents.length > 0,
+    banks,
+    wallets,
+    agents,
+  };
+}
+
+export function getDeliveryInstructions(
+  country: string,
+  method: DeliveryMethodKey,
+  provider: string,
+  city?: string,
+): string {
+  const currency = COUNTRY_TO_CURRENCY[country] || "NGN";
+  const rail = getClearingRail(currency, country);
+  if (method === "mobile") {
+    return `Instant wallet credit via ${provider || "mobile money"} (${rail.sla}). Ensure the recipient number is registered for mobile money.`;
+  }
+  if (method === "cash") {
+    const location = city?.trim() ? `${city.trim()}, ${country}` : country;
+    return `Recipient collects cash at any ${provider || "partner"} agent in ${location} using a valid government ID and the pickup reference code.`;
+  }
+  return `Direct bank deposit via ${rail.settlementRailProtocol} (${rail.sla}).`;
 }
 
 // ==========================================

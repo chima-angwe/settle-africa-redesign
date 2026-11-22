@@ -3,6 +3,11 @@ import { StatCard, QuickAction } from "@/shared/ui";
 import { RateMarquee } from "@/widgets/rate-marquee";
 import { TransferTable } from "@/widgets/transfer-table";
 import {
+  DashboardErrorState,
+  DashboardListSkeleton,
+  DashboardStatsSkeleton,
+} from "@/widgets/dashboard-overview";
+import {
   BUSINESS_APPROVAL_REQUESTS,
   loadApprovedIds,
   type Transfer,
@@ -12,6 +17,9 @@ import type { Page } from "@/shared/types";
 export interface BusinessDashboardPageProps {
   businessName: string;
   transfers: Transfer[];
+  recipientsCount?: number;
+  loadError?: string | null;
+  onRetryLoad?: () => void;
   setPage: (page: Page) => void;
   onSelectTransfer: (transfer: Transfer) => void;
 }
@@ -19,16 +27,34 @@ export interface BusinessDashboardPageProps {
 export function BusinessDashboardPage({
   businessName,
   transfers,
+  loadError = null,
+  onRetryLoad,
   setPage,
   onSelectTransfer,
 }: BusinessDashboardPageProps) {
   const [approved, setApproved] = useState<string[]>(() => loadApprovedIds());
+  const [isLoading, setIsLoading] = useState(true);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setIsLoading(false), 180);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     const sync = () => setApproved(loadApprovedIds());
     window.addEventListener("settle-approvals-updated", sync);
     return () => window.removeEventListener("settle-approvals-updated", sync);
   }, []);
+
+  const activeError = loadError || localError;
+
+  const handleRetry = () => {
+    setLocalError(null);
+    setIsLoading(true);
+    onRetryLoad?.();
+    window.setTimeout(() => setIsLoading(false), 180);
+  };
 
   const totalUsd = transfers.reduce(
     (sum, item) =>
@@ -47,6 +73,13 @@ export function BusinessDashboardPage({
   const pendingApprovals = BUSINESS_APPROVAL_REQUESTS.filter(
     (item) => !approved.includes(item.id),
   ).length;
+  const pendingTransfers = transfers.filter(
+    (item) =>
+      item.status === "Pending" ||
+      item.status === "Processing" ||
+      item.status === "Failed",
+  ).length;
+  const pendingActionsCount = pendingApprovals + pendingTransfers;
 
   return (
     <>
@@ -55,31 +88,41 @@ export function BusinessDashboardPage({
           {businessName}
         </h1>
       </div>
-      <div className="stat-grid business-stat-grid grid grid-cols-2 lg:grid-cols-4 gap-0 border border-line bg-paper rounded-2xl overflow-hidden">
-        <StatCard
-          label="Monthly transfer limit"
-          value="₦25,000,000"
-          icon="card"
-        />
-        <StatCard
-          label="Sent this month"
-          value={`$${totalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-          icon="send"
-        />
-        <StatCard
-          label="Needs approval"
-          value={String(pendingApprovals)}
-          icon="clock"
-        />
-        <StatCard
-          label="Team members"
-          value="4 members"
-          icon="users"
-        />
-      </div>
 
-      {/* Two Prominent Quick Action Buttons */}
-      <div className="grid grid-cols-2 gap-3 mb-6">
+      {activeError && (
+        <DashboardErrorState message={activeError} onRetry={handleRetry} />
+      )}
+
+      {isLoading ? (
+        <DashboardStatsSkeleton />
+      ) : (
+        <div className="stat-grid business-stat-grid grid grid-cols-2 lg:grid-cols-4 gap-0 border border-line bg-paper rounded-2xl overflow-hidden">
+          <StatCard
+            label="Monthly transfer limit"
+            value="₦25,000,000"
+            icon="card"
+          />
+          <StatCard
+            label="Sent this month"
+            value={`$${totalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            icon="send"
+          />
+          <StatCard
+            label="Pending actions"
+            value={String(pendingActionsCount)}
+            icon="clock"
+            onClick={() => setPage("Notifications")}
+          />
+          <StatCard
+            label="Team members"
+            value="4 members"
+            icon="users"
+          />
+        </div>
+      )}
+
+      {/* Entry Points: New Payment, Bulk Transfer, Manage Recipients */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
         <QuickAction
           icon="send"
           title="New payment"
@@ -92,9 +135,13 @@ export function BusinessDashboardPage({
           variant="secondary"
           onClick={() => setPage("Bulk transfer")}
         />
+        <QuickAction
+          icon="users"
+          title="Manage recipients"
+          variant="secondary"
+          onClick={() => setPage("Recipients")}
+        />
       </div>
-
-
 
       <RateMarquee />
 
@@ -111,10 +158,25 @@ export function BusinessDashboardPage({
             View all <span>→</span>
           </button>
         </div>
-        <TransferTable
-          transfers={transfers.slice(0, 3)}
-          onSelect={onSelectTransfer}
-        />
+        {isLoading ? (
+          <DashboardListSkeleton rows={3} />
+        ) : (
+          <TransferTable
+            transfers={transfers.slice(0, 3)}
+            onSelect={onSelectTransfer}
+            emptyTitle="No business payments yet"
+            emptySubtitle="Create a new payment or bulk batch to track settlements here."
+            emptyAction={
+              <button
+                type="button"
+                className="button button-primary button-small px-4 py-2 text-xs font-semibold rounded-xl cursor-pointer"
+                onClick={() => setPage("Send money")}
+              >
+                New payment
+              </button>
+            }
+          />
+        )}
       </section>
     </>
   );

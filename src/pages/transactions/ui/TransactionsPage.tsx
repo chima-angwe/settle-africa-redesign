@@ -29,7 +29,7 @@ export function TransactionsPage({
   const filtered = useMemo(
     () =>
       transfers.filter((item) => {
-        const searchTarget = `${item.name} ${item.id} ${item.country} ${item.provider || ""} ${item.description || ""}`.toLowerCase();
+        const searchTarget = `${item.name} ${item.id} ${item.country} ${item.provider || ""} ${item.method || ""} ${item.status} ${item.description || ""}`.toLowerCase();
         if (!searchTarget.includes(query.toLowerCase())) return false;
         if (status !== "All statuses" && item.status !== status) return false;
         if (
@@ -128,6 +128,9 @@ export function TransactionsPage({
             <option value="All types">All types</option>
             <option value="Bank transfer">Bank transfer</option>
             <option value="Mobile money">Mobile money</option>
+            <option value="Cash pickup">Cash pickup</option>
+            <option value="Airtime top-up">Airtime top-up</option>
+            <option value="Data top-up">Data top-up</option>
             <option value="Card">Card</option>
           </select>
 
@@ -141,6 +144,8 @@ export function TransactionsPage({
             <option value="Pending">Pending</option>
             <option value="Processing">Processing</option>
             <option value="Completed">Completed</option>
+            <option value="Failed">Failed</option>
+            <option value="Cancelled">Cancelled</option>
           </select>
         </div>
       </div>
