@@ -36,25 +36,25 @@ export function NotificationSettings({ onSaved }: NotificationSettingsProps) {
     description: string;
     icon: string;
   }[] = [
-    {
-      key: "transferUpdates",
-      title: "Transfer & top-up confirmations",
-      description: "In-app updates when payments or top-ups complete.",
-      icon: "send",
-    },
-    {
-      key: "rateAlerts",
-      title: "Exchange rate alerts",
-      description: "Updates when supported corridor FX rates move.",
-      icon: "bell",
-    },
-    {
-      key: "productNews",
-      title: "Product news & updates",
-      description: "New routes, delivery partners, and feature releases.",
-      icon: "bell",
-    },
-  ];
+      {
+        key: "transferUpdates",
+        title: "Transfer & top-up confirmations",
+        description: "In-app updates when payments or top-ups complete.",
+        icon: "send",
+      },
+      {
+        key: "rateAlerts",
+        title: "Exchange rate alerts",
+        description: "Updates when supported corridor FX rates move.",
+        icon: "bell",
+      },
+      {
+        key: "productNews",
+        title: "Product news & updates",
+        description: "New routes, delivery partners, and feature releases.",
+        icon: "bell",
+      },
+    ];
 
   const toggle = (key: keyof NotificationPreferences) => {
     setSettings((current) => {
