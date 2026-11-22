@@ -186,6 +186,13 @@ export function Icon({ name, size = 19, className }: IconProps) {
         <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
       </>
     ),
+    help: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M9.5 9.5a2.5 2.5 0 0 1 4.9.8c0 1.7-2.4 2.2-2.4 3.7" />
+        <circle cx="12" cy="17" r=".5" fill="currentColor" />
+      </>
+    ),
   };
 
   return <svg {...common}>{paths[name] ?? paths.grid}</svg>;

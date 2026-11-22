@@ -8,7 +8,9 @@ export function TransferStatusBadge({ status }: { status: TransferStatus | strin
         ? "bg-amber-600 dark:bg-amber-400"
         : status === "Failed"
           ? "bg-rose-600 dark:bg-rose-400"
-          : "bg-muted";
+          : status === "Cancelled"
+            ? "bg-zinc-500 dark:bg-zinc-400"
+            : "bg-muted";
 
   return (
     <span className="status inline-flex items-center gap-1.5 px-[7px] py-1 border border-line rounded-[2px] text-ink text-[8px] font-semibold tracking-wide">

@@ -1,7 +1,7 @@
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/shared/ui";
-import { parseCsvLine } from "@/shared/lib";
+import { formatTransferTimestamp, parseCsvLine } from "@/shared/lib";
 import type { Transfer } from "@/entities/transfer";
 import { countries, CountryBadge } from "@/entities/country";
 import {
@@ -23,6 +23,7 @@ type BulkStep = "form" | "payment" | "processing" | "success" | "failed";
 export interface BulkTransferProps {
   setTransfers: React.Dispatch<React.SetStateAction<Transfer[]>>;
   onTrackTransfer: (transfer: Transfer) => void;
+  onBeforeSubmit?: () => boolean;
 }
 
 interface BulkRecipientRow {
@@ -65,6 +66,7 @@ function createEmptyRow(indexKey?: string): BulkRecipientRow {
 export function BulkTransfer({
   setTransfers,
   onTrackTransfer,
+  onBeforeSubmit,
 }: BulkTransferProps) {
   const [rows, setRows] = useState<BulkRecipientRow[]>(() => [
     createEmptyRow("row-initial-1"),
@@ -77,6 +79,10 @@ export function BulkTransfer({
   const [processingProgress, setProcessingProgress] = useState(0);
   const [processingMessage, setProcessingMessage] = useState("");
   const [isDragging, setIsDragging] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
+  const completedBatchKeysRef = useRef<Set<string>>(new Set());
+  const batchKeyRef = useRef("batch-initial");
   const [schedule, setSchedule] = useState<ScheduleConfig>(() => ({
     enabled: false,
     mode: "now",
@@ -332,6 +338,12 @@ export function BulkTransfer({
   };
 
   const executeBatchPayment = () => {
+    if (onBeforeSubmit && !onBeforeSubmit()) return;
+    if (isSubmittingRef.current || step === "processing" || step === "success") return;
+    if (completedBatchKeysRef.current.has(batchKeyRef.current)) return;
+
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
     clearPaymentTimers();
     setPaymentError("");
     setStep("processing");
@@ -352,6 +364,7 @@ export function BulkTransfer({
       const isScheduledLater = schedule.enabled && schedule.mode === "later";
       const now = Date.now();
       const id = "BT-" + String(now).slice(-7);
+      const timestamp = formatTransferTimestamp();
       const created: Transfer[] = rows.map((row, index) => {
         const curr = COUNTRY_TO_CURRENCY[row.country] || "NGN";
         return {
@@ -366,15 +379,18 @@ export function BulkTransfer({
           description: row.narration.trim() || undefined,
           schedule: scheduleLabel,
           status: !isSuccess ? "Failed" : isScheduledLater ? "Pending" : "Completed",
-          date: scheduleLabel || "Just now",
+          date: scheduleLabel || timestamp,
         };
       });
 
       setTransfers((current) => [...created, ...current]);
       setBatchId(id);
       setSubmitted(created);
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
 
       if (isSuccess) {
+        completedBatchKeysRef.current.add(batchKeyRef.current);
         setStep("success");
       } else {
         setPaymentError(
@@ -389,6 +405,9 @@ export function BulkTransfer({
 
   const resetBatch = () => {
     clearPaymentTimers();
+    isSubmittingRef.current = false;
+    setIsSubmitting(false);
+    batchKeyRef.current = `batch-${Date.now()}`;
     setRows([createEmptyRow()]);
     setSubmitted([]);
     setBatchId("");
@@ -577,7 +596,10 @@ export function BulkTransfer({
               <button
                 type="button"
                 onClick={executeBatchPayment}
-                disabled={schedule.enabled && schedule.mode !== "now" && !schedule.date}
+                disabled={
+                  isSubmitting ||
+                  (schedule.enabled && schedule.mode !== "now" && !schedule.date)
+                }
                 className="button button-primary w-full h-11 rounded-xl text-xs sm:text-sm font-bold cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
               >
                 {schedule.enabled && schedule.mode === "later"
@@ -672,7 +694,8 @@ export function BulkTransfer({
           <div className="space-y-2">
             <button
               type="button"
-              className="button button-primary w-full h-11 text-sm font-medium rounded-xl cursor-pointer"
+              disabled={isSubmitting}
+              className="button button-primary w-full h-11 text-sm font-medium rounded-xl cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
               onClick={executeBatchPayment}
             >
               Try again

@@ -1,6 +1,16 @@
 import { useState } from "react";
 import { Icon, LogoMark } from "@/shared/ui";
 import { CountrySelect, callingCodes } from "@/entities/country";
+import {
+  findAccountByEmail,
+  findAccountByIdentifier,
+  getAccountsForType,
+  hasDuplicateAccount,
+  isValidEmail,
+  isValidPhone,
+  saveStoredAccount,
+  updateStoredPassword,
+} from "@/shared/lib";
 import type { AccountType, Theme } from "@/shared/types";
 
 export interface AuthCompleteData {
@@ -24,6 +34,8 @@ export interface AuthScreenProps {
   accountType: AccountType;
   onAccountTypeChange: (type: AccountType) => void;
   initialCountry: string;
+  sessionNotice?: string;
+  onClearSessionNotice?: () => void;
   onComplete: (account: AuthCompleteData) => void;
 }
 
@@ -35,6 +47,8 @@ export function AuthScreen({
   accountType,
   onAccountTypeChange,
   initialCountry,
+  sessionNotice = "",
+  onClearSessionNotice,
   onComplete,
 }: AuthScreenProps) {
   const [fullName, setFullName] = useState("");
@@ -44,13 +58,17 @@ export function AuthScreen({
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [stage, setStage] = useState(1);
+  const [forgotStage, setForgotStage] = useState<1 | 2>(1);
   const [otp, setOtp] = useState("");
+  const [resetOtp, setResetOtp] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [address, setAddress] = useState("");
   const [occupation, setOccupation] = useState("");
   const [businessCategory, setBusinessCategory] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -61,29 +79,77 @@ export function AuthScreen({
     event.preventDefault();
     setError("");
     setNotice("");
+    onClearSessionNotice?.();
 
     if (mode === "forgot") {
-      if (!email.trim()) {
-        setError("Enter the email address linked to your account.");
+      if (forgotStage === 1) {
+        if (!isValidEmail(email)) {
+          setError("Enter a valid email address linked to your account.");
+          return;
+        }
+        const registered = getAccountsForType(accountType);
+        if (registered.length > 0 && !findAccountByEmail(accountType, email)) {
+          setError("No account found with that email address.");
+          return;
+        }
+        setForgotStage(2);
+        setResetOtp("");
+        setNewPassword("");
+        setConfirmNewPassword("");
+        setNotice(`Verification code sent to ${email.trim()}. Use 123456 for this prototype.`);
         return;
       }
-      setNotice(
-        "If an account exists for that email, a reset link is on its way.",
-      );
+
+      if (resetOtp !== "123456") {
+        setError("That verification code did not match. Use 123456 for this prototype.");
+        return;
+      }
+      if (newPassword.length < 8) {
+        setError("Create a new password with at least 8 characters.");
+        return;
+      }
+      if (newPassword !== confirmNewPassword) {
+        setError("Your passwords do not match.");
+        return;
+      }
+      updateStoredPassword(accountType, email, newPassword);
+      setForgotStage(1);
+      setResetOtp("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+      setShowPassword(false);
+      setMode("signin");
+      setNotice("Password updated. Sign in with your new password.");
       return;
     }
 
     if (mode === "signup" && stage === 1) {
-      if (accountType === "business" && !businessName.trim()) {
+      if (accountType === "business" && businessName.trim().length < 2) {
         setError("Enter your business name to continue.");
         return;
       }
-      if (accountType === "business" && !businessRegistrationNumber.trim()) {
+      if (accountType === "business" && businessRegistrationNumber.trim().length < 2) {
         setError("Enter your company registration number to continue.");
         return;
       }
-      if (!fullName.trim() || !email.trim() || !phone.trim() || !country) {
-        setError("Complete the required contact details.");
+      if (fullName.trim().length < 2) {
+        setError("Enter your full name to continue.");
+        return;
+      }
+      if (!isValidEmail(email)) {
+        setError("Enter a valid email address.");
+        return;
+      }
+      if (!isValidPhone(phone)) {
+        setError("Enter a valid phone number (7 to 15 digits).");
+        return;
+      }
+      if (!country) {
+        setError("Select your country to continue.");
+        return;
+      }
+      if (hasDuplicateAccount(accountType, email, phone)) {
+        setError("An account with this email or phone already exists. Sign in or reset your password.");
         return;
       }
       setNotice(`Demo verification code sent to ${formattedPhone || phone}.`);
@@ -102,15 +168,21 @@ export function AuthScreen({
     }
 
     if (mode === "signup" && stage === 3) {
-      if (
-        !dateOfBirth ||
-        (accountType === "business" ? !businessCategory : !occupation)
-      ) {
+      if (!dateOfBirth) {
+        setError("Enter your date of birth to continue.");
+        return;
+      }
+      const parsedDob = new Date(dateOfBirth);
+      if (Number.isNaN(parsedDob.getTime()) || parsedDob > new Date()) {
+        setError("Enter a valid date of birth.");
+        return;
+      }
+      if (accountType === "business" ? !businessCategory : !occupation) {
         setError("Complete your profile details.");
         return;
       }
-      if (!address.trim()) {
-        setError("Enter your residential address to continue.");
+      if (address.trim().length < 5) {
+        setError("Enter your full residential address to continue.");
         return;
       }
       if (password.length < 8) {
@@ -121,37 +193,81 @@ export function AuthScreen({
         setError("Your passwords do not match.");
         return;
       }
+
+      saveStoredAccount({
+        accountType,
+        country,
+        fullName: fullName.trim(),
+        businessName: businessName.trim(),
+        businessRegistrationNumber: businessRegistrationNumber.trim() || undefined,
+        email: email.trim(),
+        phone: phone.trim(),
+        password,
+        dateOfBirth,
+        address: address.trim(),
+        occupation,
+        businessCategory,
+      });
     }
 
-    if (
-      mode === "signin" &&
-      (!(accountType === "business" ? email.trim() : phone.trim()) ||
-        !password.trim())
-    ) {
-      setError("Enter your sign-in details.");
-      return;
+    let matchedAccount = undefined;
+    if (mode === "signin") {
+      if (accountType === "business") {
+        if (!isValidEmail(email)) {
+          setError("Enter a valid business email address.");
+          return;
+        }
+      } else if (!isValidPhone(phone)) {
+        setError("Enter a valid phone number.");
+        return;
+      }
+      if (!password.trim()) {
+        setError("Enter your password to sign in.");
+        return;
+      }
+
+      const registered = getAccountsForType(accountType);
+      if (registered.length > 0) {
+        matchedAccount = findAccountByIdentifier(
+          accountType,
+          accountType === "business" ? email : phone,
+        );
+        if (!matchedAccount) {
+          setError("No account found for those details. Check your entry or register.");
+          return;
+        }
+        if (matchedAccount.password !== password) {
+          setError("Incorrect password. Try again or reset your password.");
+          return;
+        }
+      } else if (password.trim().length < 6) {
+        setError("Password must be at least 6 characters.");
+        return;
+      }
     }
 
     onComplete({
       accountType,
-      country,
+      country: matchedAccount?.country || country,
       fullName:
         mode === "signup"
           ? fullName.trim()
-          : accountType === "individual"
-            ? localStorage.getItem("settle-demo-name") || "Chima Angwe"
-            : "",
+          : matchedAccount?.fullName ||
+            (accountType === "individual"
+              ? localStorage.getItem("settle-demo-name") || "Chima Angwe"
+              : ""),
       businessName:
         mode === "signup"
           ? businessName.trim()
-          : localStorage.getItem("settle-demo-business-name") ||
-          "Chima Ventures",
-      email: email.trim(),
-      phone: phone.trim(),
-      dateOfBirth,
-      address: address.trim(),
-      occupation,
-      businessCategory,
+          : matchedAccount?.businessName ||
+            localStorage.getItem("settle-demo-business-name") ||
+            "Chima Ventures",
+      email: (matchedAccount?.email || email).trim(),
+      phone: (matchedAccount?.phone || phone).trim(),
+      dateOfBirth: matchedAccount?.dateOfBirth || dateOfBirth,
+      address: (matchedAccount?.address || address).trim(),
+      occupation: matchedAccount?.occupation || occupation,
+      businessCategory: matchedAccount?.businessCategory || businessCategory,
     });
 
     if (mode === "signup") {
@@ -172,7 +288,9 @@ export function AuthScreen({
           ? "Verify your phone"
           : "Complete your profile"
       : mode === "forgot"
-        ? "Reset your password"
+        ? forgotStage === 1
+          ? "Recover account access"
+          : "Set a new password"
         : "Welcome back";
 
   const changeAccountType = (nextType: AccountType) => {
@@ -182,13 +300,19 @@ export function AuthScreen({
     );
     setError("");
     setNotice("");
+    onClearSessionNotice?.();
   };
 
   const switchMode = (nextMode: "signin" | "signup" | "forgot") => {
     setError("");
     setNotice("");
+    onClearSessionNotice?.();
     setShowPassword(false);
     setStage(1);
+    setForgotStage(1);
+    setResetOtp("");
+    setNewPassword("");
+    setConfirmNewPassword("");
     setMode(nextMode);
   };
 
@@ -304,6 +428,12 @@ export function AuthScreen({
             </div>
           )}
 
+          {sessionNotice && !error && !notice && (
+            <div className="notice error-notice auth-notice" role="alert">
+              <span>{sessionNotice}</span>
+            </div>
+          )}
+
           {notice && (
             <div className="notice success-notice auth-notice">
               <Icon name="check" size={15} />
@@ -312,6 +442,7 @@ export function AuthScreen({
           )}
 
           <form
+            noValidate
             onSubmit={submit}
             className={`auth-form ${mode === "signup" ? "auth-signup-form" : ""}`}
           >
@@ -544,7 +675,8 @@ export function AuthScreen({
 
             {(mode === "signin" || mode === "forgot") && (
               <>
-                {mode === "forgot" || accountType === "business" ? (
+                {(mode === "forgot" && forgotStage === 1) ||
+                (mode === "signin" && accountType === "business") ? (
                   <label>
                     Email address
                     <input
@@ -556,7 +688,7 @@ export function AuthScreen({
                       autoComplete="email"
                     />
                   </label>
-                ) : (
+                ) : mode === "signin" ? (
                   <label>
                     Phone number
                     <input
@@ -568,6 +700,62 @@ export function AuthScreen({
                       autoComplete="tel"
                     />
                   </label>
+                ) : null}
+
+                {mode === "forgot" && forgotStage === 2 && (
+                  <>
+                    <label>
+                      6-digit verification code
+                      <input
+                        required
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        maxLength={6}
+                        value={resetOtp}
+                        onChange={(e) =>
+                          setResetOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
+                        }
+                        placeholder="123456"
+                      />
+                    </label>
+                    <label>
+                      New password
+                      <div className="password-wrap">
+                        <input
+                          required
+                          minLength={8}
+                          type={showPassword ? "text" : "password"}
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          placeholder="8+ characters"
+                          autoComplete="new-password"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword((v) => !v)}
+                          aria-label={
+                            showPassword ? "Hide password" : "Show password"
+                          }
+                        >
+                          <Icon name={showPassword ? "eyeOff" : "eye"} size={16} />
+                        </button>
+                      </div>
+                    </label>
+                    <label>
+                      Confirm new password
+                      <div className="password-wrap">
+                        <input
+                          required
+                          minLength={8}
+                          type={showPassword ? "text" : "password"}
+                          value={confirmNewPassword}
+                          onChange={(e) => setConfirmNewPassword(e.target.value)}
+                          placeholder="Re-enter password"
+                          autoComplete="new-password"
+                        />
+                      </div>
+                    </label>
+                  </>
                 )}
 
                 {mode === "signin" && (
@@ -613,14 +801,16 @@ export function AuthScreen({
             )}
 
             <div className="auth-actions">
-              {mode === "signup" && stage > 1 && (
+              {((mode === "signup" && stage > 1) ||
+                (mode === "forgot" && forgotStage > 1)) && (
                 <button
                   type="button"
                   className="button button-quiet auth-back"
                   onClick={() => {
                     setError("");
                     setNotice("");
-                    setStage(stage - 1);
+                    if (mode === "forgot") setForgotStage(1);
+                    else setStage(stage - 1);
                   }}
                 >
                   ← Back
@@ -637,7 +827,9 @@ export function AuthScreen({
                       ? "Verify & continue"
                       : "Create account"
                   : mode === "forgot"
-                    ? "Send reset link"
+                    ? forgotStage === 1
+                      ? "Send recovery code"
+                      : "Update password"
                     : "Sign in"}
                 <span>→</span>
               </button>

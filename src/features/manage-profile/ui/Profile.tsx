@@ -2,16 +2,24 @@ import type React from 'react';
 import { useState } from 'react';
 import { Icon, PageHeading } from '@/shared/ui';
 import { CountryBadge } from '@/entities/country';
+import type { Transfer } from '@/entities/transfer';
 import type { AccountType } from '@/shared/types';
 import { SecuritySettings } from './SecuritySettings';
 import { NotificationSettings } from './NotificationSettings';
 import { HelpSupport } from './HelpSupport';
+
+export type ProfileTab = "Profile" | "Security" | "Notifications" | "Help & support";
 
 export interface ProfileProps {
   name: string;
   setName: (name: string) => void;
   onLogout: () => void;
   accountType: AccountType;
+  activeTab?: ProfileTab;
+  onTabChange?: (tab: ProfileTab) => void;
+  supportTransferRef?: string;
+  onClearSupportTransferRef?: () => void;
+  transfers?: Transfer[];
 }
 
 export function Profile({
@@ -19,12 +27,12 @@ export function Profile({
   setName,
   onLogout,
   accountType,
-}: {
-  name: string;
-  setName: (name: string) => void;
-  onLogout: () => void;
-  accountType: AccountType;
-}) {
+  activeTab,
+  onTabChange,
+  supportTransferRef,
+  onClearSupportTransferRef,
+  transfers = [],
+}: ProfileProps) {
   const isBusiness = accountType === "business";
   const [draft, setDraft] = useState(name);
   const [email, setEmail] = useState(
@@ -42,7 +50,12 @@ export function Profile({
       "801 234 5678",
   );
   const [notice, setNotice] = useState("");
-  const [tab, setTab] = useState("Profile");
+  const [internalTab, setInternalTab] = useState<ProfileTab>("Profile");
+  const tab = activeTab ?? internalTab;
+  const setTab = (next: ProfileTab) => {
+    setInternalTab(next);
+    onTabChange?.(next);
+  };
   const profileCountry =
     localStorage.getItem(`settle-demo-${accountType}-country`) || "Nigeria";
   const save = (event: React.FormEvent) => {
@@ -221,9 +234,14 @@ export function Profile({
             {tab === "Security" ? (
               <SecuritySettings onSaved={setNotice} />
             ) : tab === "Notifications" ? (
-              <NotificationSettings />
+              <NotificationSettings onSaved={setNotice} />
             ) : (
-              <HelpSupport onNotice={setNotice} />
+              <HelpSupport
+                onNotice={setNotice}
+                initialTransferRef={supportTransferRef}
+                onClearTransferRef={onClearSupportTransferRef}
+                transfers={transfers}
+              />
             )}
           </section>
         )}
@@ -233,7 +251,7 @@ export function Profile({
               type="button"
               key={item}
               className={tab === item ? "selected" : ""}
-              onClick={() => setTab(item)}
+              onClick={() => setTab(item as ProfileTab)}
             >
               <Icon
                 name={

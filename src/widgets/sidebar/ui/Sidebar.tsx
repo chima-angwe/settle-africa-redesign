@@ -9,6 +9,8 @@ export interface SidebarProps {
   setMobileNav: (open: boolean) => void;
   onLogout: () => void;
   onClearTargetRecipient?: () => void;
+  onOpenHelp?: () => void;
+  isHelpActive?: boolean;
 }
 
 interface NavItemConfig {
@@ -30,6 +32,8 @@ export function Sidebar({
   setMobileNav,
   onLogout,
   onClearTargetRecipient,
+  onOpenHelp,
+  isHelpActive = false,
 }: SidebarProps) {
   const sections: NavSection[] = [
     {
@@ -150,7 +154,8 @@ export function Sidebar({
           </span>
           <div className="grid gap-1">
             {accountItems.map((item) => {
-              const isActive = page === item.page;
+              const isActive =
+                page === item.page && !(item.page === "Profile" && isHelpActive);
               return (
                 <button
                   type="button"
@@ -173,6 +178,35 @@ export function Sidebar({
                 </button>
               );
             })}
+            {onOpenHelp && (
+              <button
+                type="button"
+                className={`nav-item !min-h-[42px] ${
+                  page === "Profile" && isHelpActive
+                    ? "active !bg-white !text-black border-white"
+                    : "!text-white hover:!text-white hover:!bg-[#252525]"
+                }`}
+                onClick={() => {
+                  onOpenHelp();
+                  setMobileNav(false);
+                }}
+              >
+                <Icon
+                  name="help"
+                  className={page === "Profile" && isHelpActive ? "!text-black" : "!text-white"}
+                />
+                <span
+                  className={
+                    page === "Profile" && isHelpActive
+                      ? "!text-black font-semibold"
+                      : "!text-white"
+                  }
+                >
+                  Help & support
+                </span>
+                {page === "Profile" && isHelpActive && <i className="nav-dot" />}
+              </button>
+            )}
             <button
               type="button"
               className="nav-item logout !min-h-[42px] !text-white hover:!text-white hover:!bg-[#252525]"

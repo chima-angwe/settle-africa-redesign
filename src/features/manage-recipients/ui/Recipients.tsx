@@ -295,6 +295,7 @@ export function Recipients({
                   <option>Bank transfer</option>
                   <option>Mobile money</option>
                   <option>M-Pesa</option>
+                  <option>Cash pickup</option>
                 </select>
               </div>
 

@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Icon } from "@/shared/ui";
-import type { Transfer } from "@/entities/transfer";
+import { TransferStatusBadge, type Transfer } from "@/entities/transfer";
 import { CountryBadge } from "@/entities/country";
 
 export interface TransferTableProps {
@@ -153,12 +153,7 @@ export function TransferTable({
                   </strong>
                 </td>
                 <td className="p-[12px_14px] whitespace-nowrap">
-                  <span
-                    className={`status inline-flex items-center gap-1.5 px-[7px] py-1 border border-line rounded-[2px] text-ink text-[8px] font-semibold status-${transfer.status.toLowerCase()}`}
-                  >
-                    <i className={`w-1.5 h-1.5 rounded-full ${transfer.status === "Completed" ? "bg-emerald-600 dark:bg-emerald-400" : transfer.status === "Processing" ? "bg-amber-600 dark:bg-amber-400" : "bg-muted"}`} />
-                    {transfer.status}
-                  </span>
+                  <TransferStatusBadge status={transfer.status} />
                 </td>
                 <td className="p-[12px_14px] text-right whitespace-nowrap">
                   <button
