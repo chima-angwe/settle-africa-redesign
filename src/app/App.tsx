@@ -36,7 +36,12 @@ import { TransactionsPage } from "@/pages/transactions";
 import { TrackTransactionPage } from "@/pages/track-transaction";
 import { LinkedBanksPage } from "@/pages/linked-banks";
 import { ProfilePage } from "@/pages/profile";
-import type { ProfileTab } from "@/features/manage-profile/ui/Profile";
+import {
+  VERIFICATION_UPDATED_EVENT,
+  loadVerificationRecord,
+  type ProfileTab,
+  type VerificationRecord,
+} from "@/features/manage-profile";
 import { WalletPage } from "@/pages/wallet";
 import { NotificationsPage } from "@/pages/notifications";
 
@@ -189,6 +194,10 @@ export function App() {
   const [query, setQuery] = useState("");
   const [activeTransfer, setActiveTransfer] = useState<Transfer | null>(null);
   const [profileTab, setProfileTab] = useState<ProfileTab>("Profile");
+  const [openVerificationPanel, setOpenVerificationPanel] = useState(false);
+  const [verificationRecord, setVerificationRecord] = useState<VerificationRecord>(
+    () => loadVerificationRecord(accountType),
+  );
   const [supportTransferRef, setSupportTransferRef] = useState("");
   const [retryDraft, setRetryDraft] = useState<RetryTransferDraft | null>(null);
   const [targetRecipientId, setTargetRecipientId] = useState<number | null>(
@@ -198,6 +207,15 @@ export function App() {
     const approved = loadApprovedIds();
     return BUSINESS_APPROVAL_REQUESTS.filter((r) => !approved.includes(r.id)).length;
   });
+
+  useEffect(() => {
+    const syncVerification = () =>
+      setVerificationRecord(loadVerificationRecord(accountType));
+    syncVerification();
+    window.addEventListener(VERIFICATION_UPDATED_EVENT, syncVerification);
+    return () =>
+      window.removeEventListener(VERIFICATION_UPDATED_EVENT, syncVerification);
+  }, [accountType]);
 
   useEffect(() => {
     const syncApprovals = () => {
@@ -334,6 +352,12 @@ export function App() {
     setSignedIn(false);
     setAuthMode("signin");
   };
+
+  const openVerificationFlow = useCallback(() => {
+    setOpenVerificationPanel(true);
+    setProfileTab("Profile");
+    setPage("Profile");
+  }, []);
 
   const openHelp = useCallback(() => {
     setSupportTransferRef("");
@@ -473,6 +497,7 @@ export function App() {
   }
 
   const hasActiveNotifications =
+    verificationRecord.status !== "approved" ||
     (accountType === "business" && pendingApprovalCount > 0) ||
     transfers.some(
       (t) =>
@@ -572,6 +597,9 @@ export function App() {
               setTransfers={setTransfers}
               onBeforeSubmit={ensureActiveSession}
               onContactSupport={handleContactSupport}
+              accountType={accountType}
+              verificationStatus={verificationRecord.status}
+              onOpenVerification={openVerificationFlow}
               setPage={setPage}
             />
           )}
@@ -580,6 +608,8 @@ export function App() {
               setTransfers={setTransfers}
               onTrackTransfer={setActiveTransfer}
               onBeforeSubmit={ensureActiveSession}
+              verificationStatus={verificationRecord.status}
+              onOpenVerification={openVerificationFlow}
             />
           )}
           {page === "Recipients" && (
@@ -619,10 +649,15 @@ export function App() {
               onLogout={handleLogout}
               accountType={accountType}
               activeTab={profileTab}
-              onTabChange={setProfileTab}
+              onTabChange={(nextTab) => {
+                setProfileTab(nextTab);
+                if (nextTab !== "Profile") setOpenVerificationPanel(false);
+              }}
               supportTransferRef={supportTransferRef}
               onClearSupportTransferRef={() => setSupportTransferRef("")}
               transfers={transfers}
+              openVerification={openVerificationPanel}
+              onStartTransfer={() => setPage("Send money")}
             />
           )}
           {page === "Notifications" && (
@@ -636,6 +671,7 @@ export function App() {
                 setProfileTab("Notifications");
                 setPage("Profile");
               }}
+              onOpenVerification={openVerificationFlow}
             />
           )}
           {page === "Linked banks" && (

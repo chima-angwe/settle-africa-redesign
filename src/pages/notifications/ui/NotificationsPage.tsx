@@ -7,6 +7,11 @@ import {
   type Transfer,
 } from "@/entities/transfer";
 import { loadNotificationPreferences } from "@/features/manage-profile/model/notificationPrefs";
+import {
+  VERIFICATION_UPDATED_EVENT,
+  getVerificationStatusMeta,
+  loadVerificationRecord,
+} from "@/features/manage-profile";
 import type { AccountType, Page } from "@/shared/types";
 
 export interface NotificationsPageProps {
@@ -16,6 +21,7 @@ export interface NotificationsPageProps {
   setPage?: (page: Page) => void;
   onSelectTransfer?: (transfer: Transfer) => void;
   onOpenPreferences?: () => void;
+  onOpenVerification?: () => void;
 }
 
 interface NotificationItem {
@@ -38,20 +44,29 @@ export function NotificationsPage({
   setPage,
   onSelectTransfer,
   onOpenPreferences,
+  onOpenVerification,
 }: NotificationsPageProps) {
   const [approved, setApproved] = useState<string[]>(() => loadApprovedIds());
   const [prefs, setPrefs] = useState(() => loadNotificationPreferences());
+  const [verification, setVerification] = useState(() =>
+    loadVerificationRecord(accountType),
+  );
 
   useEffect(() => {
     const syncApprovals = () => setApproved(loadApprovedIds());
     const syncPrefs = () => setPrefs(loadNotificationPreferences());
+    const syncVerification = () =>
+      setVerification(loadVerificationRecord(accountType));
+    syncVerification();
     window.addEventListener("settle-approvals-updated", syncApprovals);
     window.addEventListener("settle-notifications-prefs-updated", syncPrefs);
+    window.addEventListener(VERIFICATION_UPDATED_EVENT, syncVerification);
     return () => {
       window.removeEventListener("settle-approvals-updated", syncApprovals);
       window.removeEventListener("settle-notifications-prefs-updated", syncPrefs);
+      window.removeEventListener(VERIFICATION_UPDATED_EVENT, syncVerification);
     };
-  }, []);
+  }, [accountType]);
 
   const approve = (id: string) => {
     const next = [...new Set([...approved, id])];
@@ -60,25 +75,30 @@ export function NotificationsPage({
   };
 
   const twoStepEnabled = localStorage.getItem("settle-demo-two-step") === "true";
+  const verificationMeta = getVerificationStatusMeta(
+    verification.status,
+    accountType,
+    verification.outcomeReason,
+  );
 
   // Verification notifications (required service messages)
   const verificationItems: NotificationItem[] = [
-    {
-      id: "verify-kyc",
-      icon: "shield",
-      category: "Verification",
-      required: true,
-      title:
-        accountType === "business"
-          ? "Business verification pending"
-          : "Identity verification pending",
-      subtitle:
-        accountType === "business"
-          ? "Verify your company details to unlock full corporate limits"
-          : "Verify your identity to unlock higher transfer limits",
-      actionLabel: "Verify",
-      onAction: () => setPage?.("Profile"),
-    },
+    ...(verification.status !== "approved"
+      ? [
+          {
+            id: "verify-kyc",
+            icon: "shield",
+            category: "Verification" as const,
+            required: true,
+            title: verificationMeta.title,
+            subtitle: verificationMeta.description,
+            statusBadge: verificationMeta.badge,
+            actionLabel: verificationMeta.ctaLabel,
+            onAction: () =>
+              onOpenVerification ? onOpenVerification() : setPage?.("Profile"),
+          },
+        ]
+      : []),
     ...(!twoStepEnabled
       ? [
           {

@@ -1,4 +1,4 @@
-import { countryCurrencies, payoutOptions } from "@/entities/country";
+import { callingCodes, countryCurrencies, payoutOptions } from "@/entities/country";
 
 /**
  * Technical Data & FX Engine Specification for Settle Africa
@@ -362,14 +362,31 @@ export const COUNTRY_TO_CURRENCY: Record<string, string> = {
 
 export type DeliveryMethodKey = "bank" | "mobile" | "cash";
 
+export const LAUNCH_ROUTE_COUNTRIES = [
+  "Nigeria",
+  "Kenya",
+  "Ghana",
+  "South Africa",
+  "Côte d’Ivoire",
+  "Rwanda",
+  "Uganda",
+  "Egypt",
+  "Tanzania",
+] as const;
+
+export function isLaunchRouteSupported(country: string): boolean {
+  return (LAUNCH_ROUTE_COUNTRIES as readonly string[]).includes(country);
+}
+
 export const CASH_PICKUP_AGENTS: Record<string, string[]> = {
   Nigeria: ["MoneyGram Nigeria", "Western Union", "Ria Cash Pickup"],
   Kenya: ["Western Union Kenya", "MoneyGram", "Posta Kenya Cash"],
   Ghana: ["MoneyGram Ghana", "Western Union", "Ria Cash Pickup"],
   "South Africa": ["Mukuru Cash Pickup", "MoneyGram", "Western Union"],
-  Egypt: ["Western Union Egypt", "MoneyGram", "Fawry Cash Pickup"],
-  Uganda: ["Western Union Uganda", "MoneyGram", "Ria Cash Pickup"],
+  "Côte d’Ivoire": ["MoneyGram Côte d’Ivoire", "Western Union", "Ria Cash Pickup"],
   Rwanda: ["MoneyGram Rwanda", "Western Union", "Ria Cash Pickup"],
+  Uganda: ["Western Union Uganda", "MoneyGram", "Ria Cash Pickup"],
+  Egypt: ["Western Union Egypt", "MoneyGram", "Fawry Cash Pickup"],
   Tanzania: ["Western Union Tanzania", "MoneyGram", "Ria Cash Pickup"],
 };
 
@@ -379,15 +396,32 @@ const DEFAULT_CASH_PICKUP_AGENTS = [
   "Ria Cash Pickup",
 ];
 
+const SOUTH_AFRICA_BRANCH_CODES: Record<string, string> = {
+  "Standard Bank": "051001",
+  "First National Bank (FNB)": "250655",
+  "Absa Bank": "632005",
+  Nedbank: "198765",
+  "Capitec Bank": "470010",
+  Investec: "580105",
+};
+
+export function getDefaultRoutingCode(country: string, provider?: string): string {
+  if (country !== "South Africa") return "";
+  return (provider && SOUTH_AFRICA_BRANCH_CODES[provider]) || "250655";
+}
+
 export function getCorridorBanks(country: string): string[] {
-  return CORRIDOR_BANKS[country] || payoutOptions[country]?.banks || CORRIDOR_BANKS.Nigeria;
+  if (!isLaunchRouteSupported(country)) return [];
+  return CORRIDOR_BANKS[country] || payoutOptions[country]?.banks || [];
 }
 
 export function getPayoutWallets(country: string): string[] {
+  if (!isLaunchRouteSupported(country)) return [];
   return payoutOptions[country]?.wallets || [];
 }
 
 export function getCashPickupAgents(country: string): string[] {
+  if (!isLaunchRouteSupported(country)) return [];
   return CASH_PICKUP_AGENTS[country] || DEFAULT_CASH_PICKUP_AGENTS;
 }
 
@@ -396,8 +430,7 @@ export function getPayoutProviders(
   payoutMethod: DeliveryMethodKey = "bank",
 ): string[] {
   if (payoutMethod === "mobile") {
-    const wallets = getPayoutWallets(country);
-    if (wallets.length > 0) return wallets;
+    return getPayoutWallets(country);
   }
   if (payoutMethod === "cash") {
     return getCashPickupAgents(country);
@@ -405,17 +438,498 @@ export function getPayoutProviders(
   return getCorridorBanks(country);
 }
 
-export function getDeliveryMethodAvailability(country: string) {
+export interface DeliveryMethodAvailability {
+  supported: boolean;
+  bank: boolean;
+  mobile: boolean;
+  cash: boolean;
+  banks: string[];
+  wallets: string[];
+  agents: string[];
+  unsupportedReason?: string;
+}
+
+export function getDeliveryMethodAvailability(country: string): DeliveryMethodAvailability {
+  const supported = isLaunchRouteSupported(country);
   const banks = getCorridorBanks(country);
   const wallets = getPayoutWallets(country);
   const agents = getCashPickupAgents(country);
   return {
-    bank: banks.length > 0,
-    mobile: wallets.length > 0,
-    cash: agents.length > 0,
+    supported,
+    bank: supported && banks.length > 0,
+    mobile: supported && wallets.length > 0,
+    cash: supported && agents.length > 0,
     banks,
     wallets,
     agents,
+    unsupportedReason: supported
+      ? undefined
+      : `${country} is not enabled for launch payouts. Select one of the 9 supported launch routes.`,
+  };
+}
+
+export const PICKUP_ID_TYPES = [
+  "National ID",
+  "International Passport",
+  "Driver's Licence",
+] as const;
+
+export interface DeliveryFieldSpec {
+  method: DeliveryMethodKey;
+  providerLabel: string;
+  accountLabel: string;
+  accountPlaceholder: string;
+  accountInputMode: "numeric" | "text" | "tel";
+  accountHint: string;
+  allowAlphanumeric: boolean;
+  minLength: number;
+  maxLength: number;
+  requiresRoutingCode: boolean;
+  routingCodeLabel?: string;
+  routingCodePlaceholder?: string;
+  routingCodeHint?: string;
+  defaultRoutingCode?: string;
+  pickupCityPlaceholder: string;
+  requiredChecklist: string[];
+}
+
+interface BankFormatRule {
+  accountLabel: string;
+  accountPlaceholder: string;
+  accountHint: string;
+  allowAlphanumeric?: boolean;
+  minLength: number;
+  maxLength: number;
+  requiresRoutingCode?: boolean;
+  routingCodeLabel?: string;
+  routingCodePlaceholder?: string;
+  routingCodeHint?: string;
+  pickupCityPlaceholder: string;
+  mobileDigits: [number, number];
+  mobilePlaceholder: string;
+}
+
+const ROUTE_RULES: Record<string, BankFormatRule> = {
+  Nigeria: {
+    accountLabel: "NUBAN account number (10 digits)",
+    accountPlaceholder: "0123456789",
+    accountHint: "10-digit NUBAN required for NIBSS instant clearing",
+    minLength: 10,
+    maxLength: 10,
+    pickupCityPlaceholder: "e.g. Lagos, Abuja, Port Harcourt",
+    mobileDigits: [10, 11],
+    mobilePlaceholder: "0801 234 5678",
+  },
+  Kenya: {
+    accountLabel: "Bank account number (8–14 digits)",
+    accountPlaceholder: "1102345678",
+    accountHint: "8 to 14 digits for PesaLink / RTGS settlement",
+    minLength: 8,
+    maxLength: 14,
+    pickupCityPlaceholder: "e.g. Nairobi, Mombasa, Kisumu",
+    mobileDigits: [9, 10],
+    mobilePlaceholder: "0712 345 678",
+  },
+  Ghana: {
+    accountLabel: "Bank account number (10–16 digits)",
+    accountPlaceholder: "1400123456789",
+    accountHint: "10 to 16 digits for GhIPSS Instant Pay (GIP)",
+    minLength: 10,
+    maxLength: 16,
+    pickupCityPlaceholder: "e.g. Accra, Kumasi, Takoradi",
+    mobileDigits: [9, 10],
+    mobilePlaceholder: "024 123 4567",
+  },
+  "South Africa": {
+    accountLabel: "Bank account number (9–11 digits)",
+    accountPlaceholder: "62012345678",
+    accountHint: "9 to 11 digits plus 6-digit universal branch code",
+    minLength: 9,
+    maxLength: 11,
+    requiresRoutingCode: true,
+    routingCodeLabel: "Universal branch code (6 digits)",
+    routingCodePlaceholder: "250655",
+    routingCodeHint: "Auto-filled for your selected bank; edit if branch-specific",
+    pickupCityPlaceholder: "e.g. Johannesburg, Cape Town, Durban",
+    mobileDigits: [9, 10],
+    mobilePlaceholder: "082 123 4567",
+  },
+  "Côte d’Ivoire": {
+    accountLabel: "RIB / BCEAO IBAN or account number",
+    accountPlaceholder: "CI93 CI00 8011 1100 0123 4567 89",
+    accountHint: "28-character Ivorian IBAN (CI...) or 12–24 character RIB",
+    allowAlphanumeric: true,
+    minLength: 12,
+    maxLength: 28,
+    pickupCityPlaceholder: "e.g. Abidjan, Bouaké, Yamoussoukro",
+    mobileDigits: [10, 10],
+    mobilePlaceholder: "07 12 34 56 78",
+  },
+  Rwanda: {
+    accountLabel: "Bank account number (10–16 digits)",
+    accountPlaceholder: "00040012345678",
+    accountHint: "10 to 16 digits for RSwitch / Bank of Kigali clearing",
+    minLength: 10,
+    maxLength: 16,
+    pickupCityPlaceholder: "e.g. Kigali, Huye, Musanze",
+    mobileDigits: [9, 10],
+    mobilePlaceholder: "078 123 4567",
+  },
+  Uganda: {
+    accountLabel: "Bank account number (10–16 digits)",
+    accountPlaceholder: "9030012345678",
+    accountHint: "10 to 16 digits for Bank of Uganda ACH settlement",
+    minLength: 10,
+    maxLength: 16,
+    pickupCityPlaceholder: "e.g. Kampala, Entebbe, Jinja",
+    mobileDigits: [9, 10],
+    mobilePlaceholder: "077 123 4567",
+  },
+  Egypt: {
+    accountLabel: "Egyptian IBAN or bank account number",
+    accountPlaceholder: "EG380002000156789012345678901",
+    accountHint: "29-character EG IBAN or 10–18 digit local account for IPN",
+    allowAlphanumeric: true,
+    minLength: 10,
+    maxLength: 29,
+    pickupCityPlaceholder: "e.g. Cairo, Alexandria, Giza",
+    mobileDigits: [10, 11],
+    mobilePlaceholder: "010 1234 5678",
+  },
+  Tanzania: {
+    accountLabel: "Bank account number (10–16 digits)",
+    accountPlaceholder: "0150123456789",
+    accountHint: "10 to 16 digits for TIPS instant bank settlement",
+    minLength: 10,
+    maxLength: 16,
+    pickupCityPlaceholder: "e.g. Dar es Salaam, Arusha, Dodoma",
+    mobileDigits: [9, 10],
+    mobilePlaceholder: "071 234 5678",
+  },
+};
+
+export function getDeliveryFieldSpec(
+  country: string,
+  method: DeliveryMethodKey,
+  provider?: string,
+): DeliveryFieldSpec {
+  const rule = ROUTE_RULES[country] || ROUTE_RULES.Nigeria;
+  const dialCode = callingCodes[country] || "+";
+
+  if (method === "mobile") {
+    const [minPhone, maxPhone] = rule.mobileDigits;
+    const digitRange = minPhone === maxPhone ? `${minPhone} digits` : `${minPhone}–${maxPhone} digits`;
+    return {
+      method,
+      providerLabel: "Mobile money provider",
+      accountLabel: `Mobile wallet number (${dialCode})`,
+      accountPlaceholder: rule.mobilePlaceholder,
+      accountInputMode: "tel",
+      accountHint: `Enter ${digitRange} registered on ${provider || "the mobile wallet"}`,
+      allowAlphanumeric: false,
+      minLength: minPhone,
+      maxLength: maxPhone + 4, // allows optional country code prefix
+      requiresRoutingCode: false,
+      pickupCityPlaceholder: rule.pickupCityPlaceholder,
+      requiredChecklist: [
+        "Mobile money provider",
+        `Registered wallet number (${dialCode})`,
+        "Wallet holder verification",
+      ],
+    };
+  }
+
+  if (method === "cash") {
+    return {
+      method,
+      providerLabel: "Pickup network",
+      accountLabel: `Recipient mobile number (${dialCode})`,
+      accountPlaceholder: rule.mobilePlaceholder,
+      accountInputMode: "tel",
+      accountHint: "Used to send pickup confirmation SMS and collection code",
+      allowAlphanumeric: false,
+      minLength: 7,
+      maxLength: 15,
+      requiresRoutingCode: false,
+      pickupCityPlaceholder: rule.pickupCityPlaceholder,
+      requiredChecklist: [
+        "Pickup network",
+        "Recipient full legal name (as on ID)",
+        `Recipient phone (${dialCode}) & pickup city`,
+        "Accepted government ID type",
+      ],
+    };
+  }
+
+  const defaultRoutingCode = getDefaultRoutingCode(country, provider);
+  const checklist = ["Destination bank", rule.accountLabel];
+  if (rule.requiresRoutingCode) {
+    checklist.push("6-digit branch code");
+  }
+  checklist.push("Verified account holder name");
+
+  return {
+    method,
+    providerLabel: "Destination bank",
+    accountLabel: rule.accountLabel,
+    accountPlaceholder: rule.accountPlaceholder,
+    accountInputMode: rule.allowAlphanumeric ? "text" : "numeric",
+    accountHint: rule.accountHint,
+    allowAlphanumeric: Boolean(rule.allowAlphanumeric),
+    minLength: rule.minLength,
+    maxLength: rule.maxLength,
+    requiresRoutingCode: Boolean(rule.requiresRoutingCode),
+    routingCodeLabel: rule.routingCodeLabel,
+    routingCodePlaceholder: rule.routingCodePlaceholder,
+    routingCodeHint: rule.routingCodeHint,
+    defaultRoutingCode,
+    pickupCityPlaceholder: rule.pickupCityPlaceholder,
+    requiredChecklist: checklist,
+  };
+}
+
+export interface DeliveryValidationInput {
+  country: string;
+  method: DeliveryMethodKey;
+  provider: string;
+  accountNumber: string;
+  routingCode?: string;
+  accountName: string;
+  recipientPhone?: string;
+  pickupCity?: string;
+  isResolvingName?: boolean;
+}
+
+export interface DeliveryFieldErrors {
+  country?: string;
+  provider?: string;
+  accountNumber?: string;
+  routingCode?: string;
+  accountName?: string;
+  recipientPhone?: string;
+  pickupCity?: string;
+}
+
+export interface DeliveryValidationResult {
+  valid: boolean;
+  error: string | null;
+  fieldErrors: DeliveryFieldErrors;
+}
+
+function normalizeLocalPhoneDigits(rawPhone: string, country: string): string {
+  const digits = rawPhone.replace(/\D/g, "");
+  const dialDigits = (callingCodes[country] || "").replace(/\D/g, "");
+  if (dialDigits && digits.startsWith(dialDigits) && digits.length > dialDigits.length + 5) {
+    return digits.slice(dialDigits.length);
+  }
+  return digits;
+}
+
+export function validateDeliveryDetails(
+  input: DeliveryValidationInput,
+): DeliveryValidationResult {
+  const fieldErrors: DeliveryFieldErrors = {};
+  const availability = getDeliveryMethodAvailability(input.country);
+
+  if (!availability.supported) {
+    const msg = availability.unsupportedReason || `Payouts to ${input.country} are not supported.`;
+    fieldErrors.country = msg;
+    return { valid: false, error: msg, fieldErrors };
+  }
+
+  if (!availability[input.method]) {
+    const label =
+      input.method === "mobile"
+        ? "Mobile money"
+        : input.method === "cash"
+          ? "Cash pickup"
+          : "Bank transfer";
+    const msg = `${label} is not available for ${input.country}.`;
+    return { valid: false, error: msg, fieldErrors };
+  }
+
+  const providers = getPayoutProviders(input.country, input.method);
+  const trimmedProvider = input.provider.trim();
+  if (!trimmedProvider || (providers.length > 0 && !providers.includes(trimmedProvider))) {
+    const msg =
+      input.method === "cash"
+        ? "Select a supported cash pickup network."
+        : input.method === "mobile"
+          ? "Select a supported mobile money provider."
+          : "Select a supported destination bank.";
+    fieldErrors.provider = msg;
+    return { valid: false, error: msg, fieldErrors };
+  }
+
+  const rule = ROUTE_RULES[input.country] || ROUTE_RULES.Nigeria;
+
+  if (input.method === "cash") {
+    const trimmedName = input.accountName.trim();
+    const nameParts = trimmedName.split(/\s+/).filter(Boolean);
+    if (trimmedName.length < 4 || nameParts.length < 2) {
+      const msg = "Enter the recipient's full legal name (first and last name matching government ID).";
+      fieldErrors.accountName = msg;
+      return { valid: false, error: msg, fieldErrors };
+    }
+    const localPhone = normalizeLocalPhoneDigits(input.recipientPhone || "", input.country);
+    const [minPhone, maxPhone] = rule.mobileDigits;
+    if (localPhone.length < Math.min(7, minPhone) || localPhone.length > Math.max(12, maxPhone + 1)) {
+      const msg = `Enter a valid ${input.country} mobile number (${callingCodes[input.country] || "+"}) for pickup notifications.`;
+      fieldErrors.recipientPhone = msg;
+      return { valid: false, error: msg, fieldErrors };
+    }
+    if ((input.pickupCity || "").trim().length < 2) {
+      const msg = `Enter the destination pickup city (${rule.pickupCityPlaceholder}).`;
+      fieldErrors.pickupCity = msg;
+      return { valid: false, error: msg, fieldErrors };
+    }
+    return { valid: true, error: null, fieldErrors };
+  }
+
+  if (input.isResolvingName) {
+    return {
+      valid: false,
+      error: "Please wait for recipient verification to complete.",
+      fieldErrors,
+    };
+  }
+
+  if (input.method === "mobile") {
+    const localPhone = normalizeLocalPhoneDigits(input.accountNumber, input.country);
+    const [minPhone, maxPhone] = rule.mobileDigits;
+    if (localPhone.length < minPhone || localPhone.length > maxPhone) {
+      const expected = minPhone === maxPhone ? `${minPhone}` : `${minPhone}–${maxPhone}`;
+      const msg = `Enter a valid ${input.country} mobile wallet number (${expected} local digits).`;
+      fieldErrors.accountNumber = msg;
+      return { valid: false, error: msg, fieldErrors };
+    }
+    if (!input.accountName.trim()) {
+      const msg = "Wallet holder verification is required before continuing.";
+      fieldErrors.accountNumber = msg;
+      return { valid: false, error: msg, fieldErrors };
+    }
+    return { valid: true, error: null, fieldErrors };
+  }
+
+  // Bank transfer validation
+  const compact = input.accountNumber.replace(/[\s-]+/g, "").toUpperCase();
+  if (rule.allowAlphanumeric) {
+    if (input.country === "Côte d’Ivoire") {
+      const validIban = /^CI\d{2}[A-Z0-9]{24}$/.test(compact);
+      const validRib = /^[A-Z0-9]{12,24}$/.test(compact);
+      if (!validIban && !validRib) {
+        const msg = "Enter a valid 28-character Ivorian IBAN (CI...) or 12–24 character RIB.";
+        fieldErrors.accountNumber = msg;
+        return { valid: false, error: msg, fieldErrors };
+      }
+    } else if (input.country === "Egypt") {
+      const validEgIban = /^EG\d{27}$/.test(compact);
+      const validLocalAcc = /^\d{10,18}$/.test(compact);
+      if (!validEgIban && !validLocalAcc) {
+        const msg = "Enter a valid 29-character Egyptian IBAN (EG...) or 10–18 digit account number.";
+        fieldErrors.accountNumber = msg;
+        return { valid: false, error: msg, fieldErrors };
+      }
+    }
+  } else {
+    const digitsOnly = input.accountNumber.replace(/\D/g, "");
+    if (digitsOnly.length < rule.minLength || digitsOnly.length > rule.maxLength) {
+      const rangeText =
+        rule.minLength === rule.maxLength
+          ? `exactly ${rule.minLength} digits`
+          : `${rule.minLength}–${rule.maxLength} digits`;
+      const msg = `Enter a valid ${input.country} bank account number (${rangeText}).`;
+      fieldErrors.accountNumber = msg;
+      return { valid: false, error: msg, fieldErrors };
+    }
+  }
+
+  if (rule.requiresRoutingCode) {
+    const branchDigits = (input.routingCode || "").replace(/\D/g, "");
+    if (branchDigits.length !== 6) {
+      const msg = "Enter a valid 6-digit South African bank branch code.";
+      fieldErrors.routingCode = msg;
+      return { valid: false, error: msg, fieldErrors };
+    }
+  }
+
+  if (!input.accountName.trim()) {
+    const msg = "Enter a valid account number to verify the recipient's bank account name.";
+    fieldErrors.accountNumber = msg;
+    return { valid: false, error: msg, fieldErrors };
+  }
+
+  return { valid: true, error: null, fieldErrors };
+}
+
+export interface DeliveryInstructionDetails {
+  headline: string;
+  eta: string;
+  summary: string;
+  steps: string[];
+}
+
+export function getDeliveryInstructionDetails(
+  country: string,
+  method: DeliveryMethodKey,
+  provider: string,
+  city?: string,
+  recipientName?: string,
+  idType?: string,
+): DeliveryInstructionDetails {
+  const currency = COUNTRY_TO_CURRENCY[country] || "NGN";
+  const rail = getClearingRail(currency, country);
+  const chosenProvider = provider || "partner provider";
+
+  if (method === "mobile") {
+    const summary = `Instant ${currency} mobile wallet credit via ${chosenProvider} (${rail.sla}). Ensure the recipient's number is registered and within wallet tier limits.`;
+    return {
+      headline: `Mobile money payout · ${chosenProvider}`,
+      eta: rail.sla,
+      summary,
+      steps: [
+        `Funds settle directly in ${currency} to the recipient's ${chosenProvider} wallet (${rail.sla}).`,
+        "Recipient number must be active and registered for mobile money in " + country + ".",
+        "An instant SMS / app notification is sent once funds are credited.",
+      ],
+    };
+  }
+
+  if (method === "cash") {
+    const location = city?.trim() ? `${city.trim()}, ${country}` : country;
+    const requiredId = idType || "valid government photo ID";
+    const holder = recipientName?.trim() || "the named recipient";
+    const summary = `Cash ready in minutes at ${chosenProvider} locations in ${location}. Recipient needs ${requiredId} matching ${holder} and the PK pickup code.`;
+    return {
+      headline: `Cash pickup · ${chosenProvider}`,
+      eta: "Ready within minutes · Valid 30 days",
+      summary,
+      steps: [
+        `Collect cash in ${currency} at any participating ${chosenProvider} branch in ${location}.`,
+        `Recipient must present an original ${requiredId} matching "${holder}".`,
+        "Share the generated PK pickup reference code (also sent via SMS) at the counter.",
+      ],
+    };
+  }
+
+  const routeNote =
+    country === "South Africa"
+      ? "6-digit branch code routes the payout through SARB PayShap / RTC."
+      : country === "Côte d’Ivoire"
+        ? "Ensure the BCEAO RIB or CI IBAN matches the receiving bank branch."
+        : country === "Egypt"
+          ? "29-character EG IBAN or local account settles over Egypt IPN."
+          : `Recipient name is verified against ${chosenProvider} before clearing.`;
+  const summary = `Direct ${currency} bank deposit to ${chosenProvider} via ${rail.settlementRailProtocol} (${rail.sla}). ${routeNote}`;
+  return {
+    headline: `Bank transfer · ${chosenProvider}`,
+    eta: rail.sla,
+    summary,
+    steps: [
+      `Settled directly into the ${chosenProvider} account in ${currency} via ${rail.settlementRailProtocol}.`,
+      routeNote,
+      "Transfers are non-reversible once cleared; verify account details on the review screen.",
+    ],
   };
 }
 
@@ -424,17 +938,17 @@ export function getDeliveryInstructions(
   method: DeliveryMethodKey,
   provider: string,
   city?: string,
+  recipientName?: string,
+  idType?: string,
 ): string {
-  const currency = COUNTRY_TO_CURRENCY[country] || "NGN";
-  const rail = getClearingRail(currency, country);
-  if (method === "mobile") {
-    return `Instant wallet credit via ${provider || "mobile money"} (${rail.sla}). Ensure the recipient number is registered for mobile money.`;
-  }
-  if (method === "cash") {
-    const location = city?.trim() ? `${city.trim()}, ${country}` : country;
-    return `Recipient collects cash at any ${provider || "partner"} agent in ${location} using a valid government ID and the pickup reference code.`;
-  }
-  return `Direct bank deposit via ${rail.settlementRailProtocol} (${rail.sla}).`;
+  return getDeliveryInstructionDetails(
+    country,
+    method,
+    provider,
+    city,
+    recipientName,
+    idType,
+  ).summary;
 }
 
 // ==========================================
@@ -499,6 +1013,20 @@ export const CORRIDOR_BANKS: Record<string, string[]> = {
     "QNB Alahli",
     "AlexBank",
   ],
+  "Côte d’Ivoire": [
+    "Société Générale Côte d’Ivoire",
+    "Ecobank Côte d’Ivoire",
+    "Bank of Africa Côte d’Ivoire",
+    "Coris Bank International",
+    "Orange Bank Africa",
+  ],
+  Tanzania: [
+    "CRDB Bank",
+    "NMB Bank",
+    "NBC Tanzania",
+    "Stanbic Bank Tanzania",
+    "Absa Bank Tanzania",
+  ],
   "Francophone WA": [
     "Ecobank UEMOA",
     "Société Générale Côte d'Ivoire",
@@ -556,6 +1084,24 @@ const DEMO_DIRECTORIES: Record<string, string[]> = {
     "Joseph Mukasa",
     "Sarah Atuhaire",
   ],
+  "Côte d’Ivoire": [
+    "Kouadio Yao",
+    "Aminata Koné",
+    "Serge Kouassi",
+    "Mariam Touré",
+  ],
+  Egypt: [
+    "Omar El-Sayed",
+    "Nourhan Hassan",
+    "Karim Mansour",
+    "Salma Ibrahim",
+  ],
+  Tanzania: [
+    "Juma Hassan",
+    "Neema Mwakyusa",
+    "Baraka Mushi",
+    "Asha Bakari",
+  ],
   default: [
     "Ibrahim Diallo",
     "Kofi Mensah",
@@ -574,12 +1120,14 @@ export function resolveInterbankAccountName(
   _bankName: string,
   country: string
 ): string {
-  const digits = accountNumber.replace(/\D/g, "");
-  if (digits.length < 8) return "";
+  const cleaned = accountNumber.replace(/[^a-zA-Z0-9]/g, "");
+  if (cleaned.length < 8) return "";
 
   const list = DEMO_DIRECTORIES[country] || DEMO_DIRECTORIES.default;
-  const numSum = digits.split("").reduce((acc, char) => acc + parseInt(char, 10), 0);
-  const nameIndex = numSum % list.length;
+  const charSum = cleaned
+    .split("")
+    .reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const nameIndex = charSum % list.length;
   return list[nameIndex];
 }
 

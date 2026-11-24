@@ -1,9 +1,16 @@
 import type React from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Icon, PageHeading } from '@/shared/ui';
 import { CountryBadge } from '@/entities/country';
 import type { Transfer } from '@/entities/transfer';
 import type { AccountType } from '@/shared/types';
+import {
+  VERIFICATION_UPDATED_EVENT,
+  loadVerificationRecord,
+  saveVerificationRecord,
+  type VerificationStatus,
+} from '../model/verification';
+import { VerificationFlow } from './VerificationFlow';
 import { SecuritySettings } from './SecuritySettings';
 import { NotificationSettings } from './NotificationSettings';
 import { HelpSupport } from './HelpSupport';
@@ -20,6 +27,8 @@ export interface ProfileProps {
   supportTransferRef?: string;
   onClearSupportTransferRef?: () => void;
   transfers?: Transfer[];
+  openVerification?: boolean;
+  onStartTransfer?: () => void;
 }
 
 export function Profile({
@@ -32,9 +41,21 @@ export function Profile({
   supportTransferRef,
   onClearSupportTransferRef,
   transfers = [],
+  openVerification = false,
+  onStartTransfer,
 }: ProfileProps) {
   const isBusiness = accountType === "business";
   const [draft, setDraft] = useState(name);
+  const [verificationStatus, setVerificationStatus] = useState<VerificationStatus>(
+    () => loadVerificationRecord(accountType).status,
+  );
+
+  useEffect(() => {
+    const sync = () =>
+      setVerificationStatus(loadVerificationRecord(accountType).status);
+    window.addEventListener(VERIFICATION_UPDATED_EVENT, sync);
+    return () => window.removeEventListener(VERIFICATION_UPDATED_EVENT, sync);
+  }, [accountType]);
   const [email, setEmail] = useState(
     () =>
       localStorage.getItem(`settle-demo-${accountType}-email`) ||
@@ -85,6 +106,16 @@ export function Profile({
       isBusiness ? "settle-demo-business-phone" : "settle-demo-phone",
       phone.trim(),
     );
+    const currentVerification = loadVerificationRecord(accountType);
+    saveVerificationRecord(accountType, {
+      ...currentVerification,
+      personal: {
+        ...currentVerification.personal,
+        ...(isBusiness ? { businessName: cleanName } : { fullName: cleanName }),
+        email: email.trim(),
+        phone: phone.trim(),
+      },
+    });
     setNotice("Profile updated.");
     setTimeout(() => setNotice(""), 3000);
   };
@@ -145,44 +176,35 @@ export function Profile({
                 {isBusiness && (
                   <div>
                     <span>Registration status</span>
-                    <strong>Details needed</strong>
+                    <strong>
+                      {verificationStatus === "approved"
+                        ? "Verified"
+                        : verificationStatus === "pending"
+                          ? "Pending review"
+                          : verificationStatus === "unsuccessful"
+                            ? "Resubmission needed"
+                            : "Details needed"}
+                    </strong>
                   </div>
                 )}
               </div>
             </section>
-            <section className="profile-kyc-panel">
-              <div className="profile-section-heading">
-                <h2>
-                  {isBusiness ? "Business verification" : "KYC & compliance"}
-                </h2>
-              </div>
-              <div className="profile-kyc-status">
-                <span className="profile-kyc-icon">
-                  <Icon name="shield" size={20} />
-                </span>
-                <div>
-                  <strong>
-                    {isBusiness
-                      ? "Company verification"
-                      : "Identity verification"}
-                  </strong>
-                </div>
-                <span className="verification-badge warning-badge">
-                  NOT VERIFIED
-                </span>
-                <button
-                  type="button"
-                  className="button button-primary button-small cursor-pointer"
-                  onClick={() =>
-                    setNotice(
-                      `${isBusiness ? "Business" : "Identity"} verification initiated.`,
-                    )
-                  }
-                >
-                  Start verification
-                </button>
-              </div>
-            </section>
+            <VerificationFlow
+              key={accountType}
+              accountType={accountType}
+              forceExpanded={openVerification}
+              onNotice={(message) => {
+                setNotice(message);
+                setTimeout(() => setNotice(""), 3500);
+              }}
+              onProfileSynced={(syncedName) => {
+                if (syncedName.trim()) {
+                  setDraft(syncedName.trim());
+                  setName(syncedName.trim());
+                }
+              }}
+              onStartTransfer={onStartTransfer}
+            />
             <section className="profile-personal-card">
               <div className="profile-section-heading">
                 <div>
