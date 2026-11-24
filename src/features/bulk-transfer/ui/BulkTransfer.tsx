@@ -5,6 +5,10 @@ import { formatTransferTimestamp, parseCsvLine } from "@/shared/lib";
 import type { Transfer } from "@/entities/transfer";
 import { countries, CountryBadge } from "@/entities/country";
 import {
+  VerificationGateBanner,
+  type VerificationStatus,
+} from "@/features/manage-profile";
+import {
   CORRIDOR_BANKS,
   COUNTRY_TO_CURRENCY,
   INITIAL_CORPORATE_FUNDING_SOURCES,
@@ -24,6 +28,8 @@ export interface BulkTransferProps {
   setTransfers: React.Dispatch<React.SetStateAction<Transfer[]>>;
   onTrackTransfer: (transfer: Transfer) => void;
   onBeforeSubmit?: () => boolean;
+  verificationStatus?: VerificationStatus;
+  onOpenVerification?: () => void;
 }
 
 interface BulkRecipientRow {
@@ -67,7 +73,12 @@ export function BulkTransfer({
   setTransfers,
   onTrackTransfer,
   onBeforeSubmit,
+  verificationStatus,
+  onOpenVerification,
 }: BulkTransferProps) {
+  const isVerificationBlocked = Boolean(
+    verificationStatus && verificationStatus !== "approved",
+  );
   const [rows, setRows] = useState<BulkRecipientRow[]>(() => [
     createEmptyRow("row-initial-1"),
   ]);
@@ -324,6 +335,10 @@ export function BulkTransfer({
   const totalDebit = totalAmount + feeAmount;
 
   const goToPayment = () => {
+    if (isVerificationBlocked) {
+      setError("Complete business verification before initiating a batch payment.");
+      return;
+    }
     if (validRows.length === 0) {
       setError("Complete at least one recipient with verified account and amount.");
       return;
@@ -338,6 +353,10 @@ export function BulkTransfer({
   };
 
   const executeBatchPayment = () => {
+    if (isVerificationBlocked) {
+      setPaymentError("Complete business verification before submitting a batch transfer.");
+      return;
+    }
     if (onBeforeSubmit && !onBeforeSubmit()) return;
     if (isSubmittingRef.current || step === "processing" || step === "success") return;
     if (completedBatchKeysRef.current.has(batchKeyRef.current)) return;
@@ -598,6 +617,7 @@ export function BulkTransfer({
                 onClick={executeBatchPayment}
                 disabled={
                   isSubmitting ||
+                  isVerificationBlocked ||
                   (schedule.enabled && schedule.mode !== "now" && !schedule.date)
                 }
                 className="button button-primary w-full h-11 rounded-xl text-xs sm:text-sm font-bold cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
@@ -846,6 +866,14 @@ export function BulkTransfer({
           </span>
         </div>
       </div>
+
+      {isVerificationBlocked && verificationStatus && (
+        <VerificationGateBanner
+          status={verificationStatus}
+          accountType="business"
+          onOpenVerification={onOpenVerification}
+        />
+      )}
 
       {error && (
         <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-400 font-medium">
@@ -1105,7 +1133,11 @@ export function BulkTransfer({
         <button
           type="button"
           onClick={goToPayment}
-          disabled={validRows.length === 0 || validRows.length !== rows.length}
+          disabled={
+            isVerificationBlocked ||
+            validRows.length === 0 ||
+            validRows.length !== rows.length
+          }
           className="button button-primary h-11 px-6 rounded-xl text-xs font-bold inline-flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:pointer-events-none transition-all"
         >
           <span>Continue</span>

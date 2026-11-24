@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/shared/ui";
-import { countries, countryFlag } from "../model/country-data";
+import { countries as allCountries, countryFlag } from "../model/country-data";
 import { CountryFlag } from "./CountryFlag";
 
 export interface CountrySelectProps {
@@ -8,6 +8,7 @@ export interface CountrySelectProps {
   onChange: (country: string) => void;
   placeholder?: string;
   className?: string;
+  countries?: readonly string[];
 }
 
 export function CountrySelect({
@@ -15,12 +16,15 @@ export function CountrySelect({
   onChange,
   placeholder = "Choose a country",
   className = "",
+  countries: allowedCountries,
 }: CountrySelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const root = useRef<HTMLDivElement>(null);
   const selectedCode = countryFlag(value);
-  const filtered = countries.filter((country) =>
+  const availableCountries =
+    allowedCountries && allowedCountries.length > 0 ? allowedCountries : allCountries;
+  const filtered = availableCountries.filter((country) =>
     country.toLowerCase().includes(query.trim().toLowerCase()),
   );
 

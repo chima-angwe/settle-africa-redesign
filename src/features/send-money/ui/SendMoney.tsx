@@ -2,9 +2,14 @@ import type React from "react";
 import { useState, useRef } from "react";
 import { Icon } from "@/shared/ui";
 import { downloadTransferReceipt } from "@/shared/lib";
-import type { Page } from "@/shared/types";
+import type { AccountType, Page } from "@/shared/types";
 import type { Transfer } from "@/entities/transfer";
 import { CountryCurrencySelect, CountrySelect, callingCodes } from "@/entities/country";
+import { VerificationGateBanner } from "@/features/manage-profile";
+import {
+  LAUNCH_ROUTE_COUNTRIES,
+  PICKUP_ID_TYPES,
+} from "../model/data";
 import {
   useSendMoneyFlow,
   type UseSendMoneyFlowProps,
@@ -15,12 +20,25 @@ import { getScheduleLabel } from "../model/schedule";
 export interface SendMoneyProps extends UseSendMoneyFlowProps {
   setPage: (page: Page) => void;
   onContactSupport?: (transfer: Transfer) => void;
+  accountType?: AccountType;
+  onOpenVerification?: () => void;
   aside?: React.ReactNode | ((flow: ReturnType<typeof useSendMoneyFlow>) => React.ReactNode);
 }
 
 export function SendMoney(props: SendMoneyProps) {
-  const { setPage, recipients, aside, onContactSupport } = props;
+  const {
+    setPage,
+    recipients,
+    aside,
+    onContactSupport,
+    accountType = "individual",
+    verificationStatus,
+    onOpenVerification,
+  } = props;
   const flow = useSendMoneyFlow(props);
+  const isVerificationBlocked = Boolean(
+    verificationStatus && verificationStatus !== "approved",
+  );
 
   const [recipientTab, setRecipientTab] = useState<"saved" | "new">(() =>
     props.targetRecipientId || recipients.length === 0 ? "new" : "saved"
@@ -307,6 +325,15 @@ export function SendMoney(props: SendMoneyProps) {
         </h1>
       </div>
 
+      {isVerificationBlocked && verificationStatus && (
+        <VerificationGateBanner
+          status={verificationStatus}
+          accountType={accountType}
+          onOpenVerification={onOpenVerification}
+          className="mb-6"
+        />
+      )}
+
       <div className={aside ? "grid grid-cols-1 lg:grid-cols-12 gap-6 items-start" : ""}>
         <div className={aside ? "lg:col-span-8 min-w-0" : ""}>
           {/* Minimal Progress Line (3 steps) */}
@@ -366,6 +393,7 @@ export function SendMoney(props: SendMoneyProps) {
                       <div className="pl-2 border-l border-line shrink-0">
                         <CountryCurrencySelect
                           country={flow.sendCountry}
+                          countries={LAUNCH_ROUTE_COUNTRIES}
                           onChange={(country, code) => {
                             flow.setSendCountry(country);
                             flow.setSendCurrency(code);
@@ -398,6 +426,7 @@ export function SendMoney(props: SendMoneyProps) {
                       <div className="pl-2 border-l border-line shrink-0">
                         <CountryCurrencySelect
                           country={flow.targetCountry}
+                          countries={LAUNCH_ROUTE_COUNTRIES}
                           onChange={(country) => flow.setTargetCountry(country)}
                           ariaLabel="Select receiving country and currency"
                         />
@@ -536,10 +565,11 @@ export function SendMoney(props: SendMoneyProps) {
                 <div className="pt-2">
                   <button
                     type="button"
-                    className="button button-primary w-full h-12 text-sm font-semibold rounded-xl"
+                    disabled={isVerificationBlocked}
+                    className="button button-primary w-full h-12 text-sm font-semibold rounded-xl disabled:opacity-40 disabled:pointer-events-none"
                     onClick={flow.goToTo}
                   >
-                    Continue
+                    {isVerificationBlocked ? "Verification required to continue" : "Continue"}
                   </button>
                 </div>
               </div>
@@ -625,19 +655,97 @@ export function SendMoney(props: SendMoneyProps) {
                         );
                       })}
                     </div>
+
+                    {flow.selectedBeneficiaryId && (
+                      <div className="space-y-3 pt-1">
+                        {!flow.deliveryAvailability.supported ? (
+                          <div className="rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50/70 dark:bg-rose-950/30 px-3.5 py-2.5 text-xs text-rose-700 dark:text-rose-300">
+                            {flow.deliveryAvailability.unsupportedReason}
+                          </div>
+                        ) : (
+                          <>
+                            {flow.payoutMethod === "cash" && (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                  <label className="text-xs font-medium text-muted block mb-1.5">
+                                    Pickup city
+                                  </label>
+                                  <input
+                                    type="text"
+                                    placeholder={flow.deliverySpec.pickupCityPlaceholder}
+                                    value={flow.pickupCity}
+                                    onChange={(e) => flow.setPickupCity(e.target.value)}
+                                    className="w-full h-10 px-3 border border-line rounded-xl bg-paper text-ink text-xs outline-none focus:border-ink"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-xs font-medium text-muted block mb-1.5">
+                                    ID presented at pickup
+                                  </label>
+                                  <select
+                                    value={flow.pickupIdType}
+                                    onChange={(e) => flow.setPickupIdType(e.target.value)}
+                                    className="w-full h-10 pl-3 pr-8 border border-line rounded-xl bg-paper text-ink text-xs outline-none focus:border-ink cursor-pointer"
+                                  >
+                                    {PICKUP_ID_TYPES.map((idType) => (
+                                      <option key={idType} value={idType}>
+                                        {idType}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              </div>
+                            )}
+
+                            <div className="bg-soft border border-line rounded-xl px-3.5 py-3 space-y-1.5">
+                              <div className="flex items-center justify-between gap-2 text-[11px]">
+                                <strong className="font-semibold text-ink">
+                                  {flow.deliveryInstructionDetails.headline}
+                                </strong>
+                                <span className="text-muted font-medium shrink-0">
+                                  {flow.deliveryInstructionDetails.eta}
+                                </span>
+                              </div>
+                              <ul className="text-[11px] text-muted space-y-1 list-disc pl-4">
+                                {flow.deliveryInstructionDetails.steps.map((item) => (
+                                  <li key={item}>{item}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   /* Enter New Recipient */
                   <div className="space-y-4">
                     <div>
-                      <label className="text-xs font-medium text-muted block mb-1.5">
-                        Destination country
-                      </label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-medium text-muted">
+                          Destination country
+                        </label>
+                        <span className="text-[11px] text-muted">
+                          9 launch routes ({flow.targetCurrency})
+                        </span>
+                      </div>
                       <CountrySelect
                         value={flow.targetCountry}
+                        countries={LAUNCH_ROUTE_COUNTRIES}
                         onChange={flow.setTargetCountry}
                       />
+                      {flow.fieldErrors.country && (
+                        <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-1">
+                          {flow.fieldErrors.country}
+                        </p>
+                      )}
                     </div>
+
+                    {!flow.deliveryAvailability.supported && (
+                      <div className="rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50/70 dark:bg-rose-950/30 px-3.5 py-2.5 text-xs text-rose-700 dark:text-rose-300">
+                        {flow.deliveryAvailability.unsupportedReason}
+                      </div>
+                    )}
 
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
@@ -645,20 +753,41 @@ export function SendMoney(props: SendMoneyProps) {
                           Delivery method
                         </label>
                         <span className="text-[11px] text-muted">
-                          {flow.deliveryAvailability.mobile
-                            ? "Bank · Mobile · Cash"
-                            : "Bank · Cash (Mobile unavailable)"}
+                          {[
+                            flow.deliveryAvailability.bank && "Bank",
+                            flow.deliveryAvailability.mobile && "Mobile money",
+                            flow.deliveryAvailability.cash && "Cash pickup",
+                          ]
+                            .filter(Boolean)
+                            .join(" · ") || "Select a launch route"}
                         </span>
                       </div>
-                      <div className="grid grid-cols-3 gap-1 p-1 bg-soft rounded-xl border border-line">
+                      <div className="grid grid-cols-3 gap-1.5">
                         {[
-                          { key: "bank" as const, label: "Bank transfer", available: true },
+                          {
+                            key: "bank" as const,
+                            label: "Bank transfer",
+                            available: flow.deliveryAvailability.bank,
+                            meta: flow.deliveryAvailability.bank
+                              ? `${flow.deliveryAvailability.banks.length} banks`
+                              : "Unavailable",
+                          },
                           {
                             key: "mobile" as const,
                             label: "Mobile money",
                             available: flow.deliveryAvailability.mobile,
+                            meta: flow.deliveryAvailability.mobile
+                              ? `${flow.deliveryAvailability.wallets.length} ${flow.deliveryAvailability.wallets.length === 1 ? "wallet" : "wallets"}`
+                              : "Unavailable",
                           },
-                          { key: "cash" as const, label: "Cash pickup", available: true },
+                          {
+                            key: "cash" as const,
+                            label: "Cash pickup",
+                            available: flow.deliveryAvailability.cash,
+                            meta: flow.deliveryAvailability.cash
+                              ? `${flow.deliveryAvailability.agents.length} networks`
+                              : "Unavailable",
+                          },
                         ].map((opt) => {
                           const isSel = flow.payoutMethod === opt.key;
                           return (
@@ -668,37 +797,51 @@ export function SendMoney(props: SendMoneyProps) {
                               disabled={!opt.available}
                               title={
                                 opt.available
-                                  ? opt.label
+                                  ? `${opt.label} (${opt.meta})`
                                   : `Not available in ${flow.targetCountry}`
                               }
-                              className={`h-9 text-xs rounded-lg transition-all ${
+                              className={`px-2.5 py-2 rounded-xl border text-left transition-all ${
                                 !opt.available
-                                  ? "text-muted/45 cursor-not-allowed"
+                                  ? "border-line/60 bg-soft/50 text-muted/45 cursor-not-allowed"
                                   : isSel
-                                    ? "bg-paper text-ink font-semibold shadow-xs"
-                                    : "text-muted hover:text-ink font-medium"
+                                    ? "border-ink bg-soft text-ink shadow-xs"
+                                    : "border-line bg-paper text-muted hover:text-ink hover:border-ink/40"
                               }`}
                               onClick={() => flow.setPayoutMethod(opt.key)}
                             >
-                              {opt.label}
+                              <span className="block text-xs font-semibold truncate">
+                                {opt.label}
+                              </span>
+                              <span className="block text-[10px] text-muted mt-0.5 truncate">
+                                {opt.meta}
+                              </span>
                             </button>
                           );
                         })}
                       </div>
                     </div>
 
+                    {/* Required Details for Selected Destination & Method */}
+                    <div className="rounded-xl border border-line bg-soft/60 px-3.5 py-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                      <span className="font-semibold text-ink">
+                        Required for {flow.targetCountry}:
+                      </span>
+                      <span className="text-muted">
+                        {flow.deliverySpec.requiredChecklist.join(" · ")}
+                      </span>
+                    </div>
+
                     <div>
                       <label className="text-xs font-medium text-muted block mb-1.5">
-                        {flow.payoutMethod === "cash"
-                          ? "Pickup network"
-                          : flow.payoutMethod === "mobile"
-                            ? "Mobile money provider"
-                            : "Destination bank"}
+                        {flow.deliverySpec.providerLabel}
                       </label>
                       <select
                         value={flow.bankName}
                         onChange={(e) => flow.setBankName(e.target.value)}
-                        className="w-full h-11 pl-3.5 pr-10 border border-line rounded-xl bg-paper text-ink text-sm outline-none focus:border-ink font-medium cursor-pointer"
+                        disabled={flow.availableProviders.length === 0}
+                        className={`w-full h-11 pl-3.5 pr-10 border rounded-xl bg-paper text-ink text-sm outline-none focus:border-ink font-medium cursor-pointer disabled:opacity-50 ${
+                          flow.fieldErrors.provider ? "border-rose-500" : "border-line"
+                        }`}
                       >
                         {flow.availableProviders.map((b) => (
                           <option key={b} value={b}>
@@ -706,6 +849,11 @@ export function SendMoney(props: SendMoneyProps) {
                           </option>
                         ))}
                       </select>
+                      {flow.fieldErrors.provider && (
+                        <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-1">
+                          {flow.fieldErrors.provider}
+                        </p>
+                      )}
                     </div>
 
                     {flow.payoutMethod === "cash" ? (
@@ -719,8 +867,15 @@ export function SendMoney(props: SendMoneyProps) {
                             placeholder="e.g. Ada Okafor"
                             value={flow.accountName}
                             onChange={(e) => flow.setAccountName(e.target.value)}
-                            className="w-full h-11 px-3.5 border border-line rounded-xl bg-paper text-ink text-sm outline-none focus:border-ink"
+                            className={`w-full h-11 px-3.5 border rounded-xl bg-paper text-ink text-sm outline-none focus:border-ink ${
+                              flow.fieldErrors.accountName ? "border-rose-500" : "border-line"
+                            }`}
                           />
+                          {flow.fieldErrors.accountName && (
+                            <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-1">
+                              {flow.fieldErrors.accountName}
+                            </p>
+                          )}
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div>
@@ -730,13 +885,20 @@ export function SendMoney(props: SendMoneyProps) {
                             <input
                               type="tel"
                               inputMode="tel"
-                              placeholder="Phone for pickup SMS"
+                              placeholder={flow.deliverySpec.accountPlaceholder}
                               value={flow.recipientPhone}
                               onChange={(e) =>
-                                flow.setRecipientPhone(e.target.value.replace(/[^0-9+ ]/g, ""))
+                                flow.setRecipientPhone(e.target.value.replace(/[^0-9+ -]/g, ""))
                               }
-                              className="w-full h-11 px-3.5 border border-line rounded-xl bg-paper text-ink font-mono text-sm outline-none focus:border-ink"
+                              className={`w-full h-11 px-3.5 border rounded-xl bg-paper text-ink font-mono text-sm outline-none focus:border-ink ${
+                                flow.fieldErrors.recipientPhone ? "border-rose-500" : "border-line"
+                              }`}
                             />
+                            {flow.fieldErrors.recipientPhone && (
+                              <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-1">
+                                {flow.fieldErrors.recipientPhone}
+                              </p>
+                            )}
                           </div>
                           <div>
                             <label className="text-xs font-medium text-muted block mb-1.5">
@@ -744,54 +906,131 @@ export function SendMoney(props: SendMoneyProps) {
                             </label>
                             <input
                               type="text"
-                              placeholder="e.g. Lagos, Nairobi"
+                              placeholder={flow.deliverySpec.pickupCityPlaceholder}
                               value={flow.pickupCity}
                               onChange={(e) => flow.setPickupCity(e.target.value)}
-                              className="w-full h-11 px-3.5 border border-line rounded-xl bg-paper text-ink text-sm outline-none focus:border-ink"
+                              className={`w-full h-11 px-3.5 border rounded-xl bg-paper text-ink text-sm outline-none focus:border-ink ${
+                                flow.fieldErrors.pickupCity ? "border-rose-500" : "border-line"
+                              }`}
                             />
+                            {flow.fieldErrors.pickupCity && (
+                              <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-1">
+                                {flow.fieldErrors.pickupCity}
+                              </p>
+                            )}
                           </div>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-muted block mb-1.5">
+                            Government ID presented at pickup
+                          </label>
+                          <select
+                            value={flow.pickupIdType}
+                            onChange={(e) => flow.setPickupIdType(e.target.value)}
+                            className="w-full h-11 pl-3.5 pr-10 border border-line rounded-xl bg-paper text-ink text-sm outline-none focus:border-ink font-medium cursor-pointer"
+                          >
+                            {PICKUP_ID_TYPES.map((idType) => (
+                              <option key={idType} value={idType}>
+                                {idType}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                       </div>
                     ) : (
-                      <div>
-                        <label className="text-xs font-medium text-muted block mb-1.5">
-                          {flow.payoutMethod === "mobile"
-                            ? `Mobile number (${callingCodes[flow.targetCountry] || "+"})`
-                            : "Account number"}
-                        </label>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          placeholder={
-                            flow.payoutMethod === "mobile"
-                              ? "Enter mobile number (min. 8 digits)"
-                              : "Enter account number (min. 8 digits)"
-                          }
-                          value={flow.accountNumber}
-                          onChange={(e) => flow.setAccountNumber(e.target.value)}
-                          className="w-full h-11 px-3.5 border border-line rounded-xl bg-paper text-ink font-mono text-sm outline-none focus:border-ink"
-                        />
-
-                        {/* Clean, Non-intrusive Name Verification Indicator */}
-                        {flow.isResolvingName && (
-                          <p className="text-xs text-muted flex items-center gap-1.5 mt-2">
-                            <span className="w-3 h-3 rounded-full border border-muted border-t-transparent animate-spin inline-block" />
-                            <span>Verifying account name...</span>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-xs font-medium text-muted block mb-1.5">
+                            {flow.deliverySpec.accountLabel}
+                          </label>
+                          <input
+                            type="text"
+                            inputMode={flow.deliverySpec.accountInputMode}
+                            placeholder={flow.deliverySpec.accountPlaceholder}
+                            value={flow.accountNumber}
+                            onChange={(e) => flow.setAccountNumber(e.target.value)}
+                            className={`w-full h-11 px-3.5 border rounded-xl bg-paper text-ink font-mono text-sm outline-none focus:border-ink ${
+                              flow.fieldErrors.accountNumber ? "border-rose-500" : "border-line"
+                            }`}
+                          />
+                          <p className="text-[11px] text-muted mt-1">
+                            {flow.deliverySpec.accountHint}
                           </p>
-                        )}
+                          {flow.fieldErrors.accountNumber && (
+                            <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-1">
+                              {flow.fieldErrors.accountNumber}
+                            </p>
+                          )}
 
-                        {!flow.isResolvingName && flow.accountName && (
-                          <p className="text-xs text-ink font-medium flex items-center gap-1.5 mt-2">
-                            <Icon name="check" size={14} className="text-emerald-600" />
-                            <span>Verified: <strong>{flow.accountName}</strong></span>
-                          </p>
+                          {/* Clean, Non-intrusive Name Verification Indicator */}
+                          {flow.isResolvingName && (
+                            <p className="text-xs text-muted flex items-center gap-1.5 mt-2">
+                              <span className="w-3 h-3 rounded-full border border-muted border-t-transparent animate-spin inline-block" />
+                              <span>
+                                {flow.payoutMethod === "mobile"
+                                  ? "Verifying mobile wallet holder..."
+                                  : "Verifying account name..."}
+                              </span>
+                            </p>
+                          )}
+
+                          {!flow.isResolvingName && flow.accountName && (
+                            <p className="text-xs text-ink font-medium flex items-center gap-1.5 mt-2">
+                              <Icon name="check" size={14} className="text-emerald-600" />
+                              <span>
+                                {flow.payoutMethod === "mobile" ? "Wallet holder:" : "Verified:"}{" "}
+                                <strong>{flow.accountName}</strong>
+                              </span>
+                            </p>
+                          )}
+                        </div>
+
+                        {flow.deliverySpec.requiresRoutingCode && (
+                          <div>
+                            <label className="text-xs font-medium text-muted block mb-1.5">
+                              {flow.deliverySpec.routingCodeLabel}
+                            </label>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              maxLength={6}
+                              placeholder={flow.deliverySpec.routingCodePlaceholder}
+                              value={flow.routingCode}
+                              onChange={(e) => flow.setRoutingCode(e.target.value)}
+                              className={`w-full h-11 px-3.5 border rounded-xl bg-paper text-ink font-mono text-sm outline-none focus:border-ink ${
+                                flow.fieldErrors.routingCode ? "border-rose-500" : "border-line"
+                              }`}
+                            />
+                            {flow.deliverySpec.routingCodeHint && (
+                              <p className="text-[11px] text-muted mt-1">
+                                {flow.deliverySpec.routingCodeHint}
+                              </p>
+                            )}
+                            {flow.fieldErrors.routingCode && (
+                              <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-1">
+                                {flow.fieldErrors.routingCode}
+                              </p>
+                            )}
+                          </div>
                         )}
                       </div>
                     )}
 
-                    <p className="text-[11px] text-muted bg-soft border border-line rounded-xl px-3.5 py-2.5 leading-relaxed">
-                      {flow.deliveryInstructions}
-                    </p>
+                    <div className="bg-soft border border-line rounded-xl px-3.5 py-3 space-y-1.5">
+                      <div className="flex items-center justify-between gap-2 text-[11px]">
+                        <strong className="font-semibold text-ink">
+                          {flow.deliveryInstructionDetails.headline}
+                        </strong>
+                        <span className="text-muted font-medium shrink-0">
+                          {flow.deliveryInstructionDetails.eta}
+                        </span>
+                      </div>
+                      <ul className="text-[11px] text-muted space-y-1 list-disc pl-4">
+                        {flow.deliveryInstructionDetails.steps.map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
 
                     {/* Save Recipient Checkbox */}
                     {!flow.selectedBeneficiaryId &&
@@ -867,9 +1106,30 @@ export function SendMoney(props: SendMoneyProps) {
                         : `${flow.payoutMethod === "mobile" ? "Mobile money" : "Bank transfer"} · ${flow.bankName} (${flow.accountNumber})`}
                     </span>
                   </div>
-                  <div className="flex justify-between gap-4 py-2.5">
-                    <span className="text-muted shrink-0">Delivery note</span>
-                    <span className="text-ink text-right">{flow.deliveryInstructions}</span>
+                  {flow.payoutMethod === "bank" && flow.deliverySpec.requiresRoutingCode && flow.routingCode && (
+                    <div className="flex justify-between py-2.5">
+                      <span className="text-muted">Branch code</span>
+                      <span className="text-ink font-mono font-medium">{flow.routingCode}</span>
+                    </div>
+                  )}
+                  {flow.payoutMethod === "cash" && (
+                    <div className="flex justify-between py-2.5">
+                      <span className="text-muted">Pickup ID &amp; SMS</span>
+                      <span className="text-ink font-medium text-right">
+                        {flow.pickupIdType} · {flow.recipientPhone}
+                      </span>
+                    </div>
+                  )}
+                  <div className="py-2.5 space-y-1">
+                    <div className="flex justify-between gap-4">
+                      <span className="text-muted shrink-0">Delivery instructions</span>
+                      <span className="text-ink font-medium text-right">
+                        {flow.deliveryInstructionDetails.eta}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-muted leading-relaxed">
+                      {flow.deliveryInstructions}
+                    </p>
                   </div>
                   <div className="flex justify-between py-2.5">
                     <span className="text-muted">Clearing protocol</span>
@@ -1043,7 +1303,7 @@ export function SendMoney(props: SendMoneyProps) {
                   </button>
                   <button
                     type="button"
-                    disabled={flow.isSubmitting}
+                    disabled={flow.isSubmitting || isVerificationBlocked}
                     className="button button-primary h-12 px-6 text-sm font-semibold rounded-xl disabled:opacity-40 disabled:pointer-events-none"
                     onClick={handleConfirmTransfer}
                   >

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/shared/ui";
 import {
-  countries,
+  countries as allCountries,
   countryCurrencies,
   countryFlag,
 } from "../model/country-data";
@@ -14,6 +14,7 @@ export interface CountryCurrencySelectProps {
   align?: "left" | "right";
   className?: string;
   triggerClassName?: string;
+  countries?: readonly string[];
 }
 
 export function CountryCurrencySelect({
@@ -23,17 +24,25 @@ export function CountryCurrencySelect({
   align = "right",
   className = "",
   triggerClassName = "",
+  countries: allowedCountries,
 }: CountryCurrencySelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const root = useRef<HTMLDivElement>(null);
 
-  const orderedCountries = useMemo(() => {
-    const rest = countries.filter((item) => item !== "Nigeria");
-    return ["Nigeria", ...rest];
-  }, []);
+  const availableCountries = useMemo(
+    () => (allowedCountries && allowedCountries.length > 0 ? allowedCountries : allCountries),
+    [allowedCountries],
+  );
 
-  const selectedCountry = countries.includes(country) ? country : "Nigeria";
+  const orderedCountries = useMemo(() => {
+    const rest = availableCountries.filter((item) => item !== "Nigeria");
+    return availableCountries.includes("Nigeria") ? ["Nigeria", ...rest] : rest;
+  }, [availableCountries]);
+
+  const selectedCountry = allCountries.includes(country)
+    ? country
+    : availableCountries[0] || "Nigeria";
   const selectedCurrency = countryCurrencies[selectedCountry] || "NGN";
   const selectedFlag = countryFlag(selectedCountry);
 

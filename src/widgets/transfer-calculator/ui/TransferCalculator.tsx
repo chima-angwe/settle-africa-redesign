@@ -11,6 +11,8 @@ export interface TransferCalculatorProps {
   onFromCountryChange?: (country: string, currency: string) => void;
   toCountry?: string;
   onToCountryChange?: (country: string, currency: string) => void;
+  fromCountries?: readonly string[];
+  toCountries?: readonly string[];
   onSwap?: () => void;
   feeAmount?: number;
   totalDebit?: number;
@@ -24,6 +26,8 @@ export function TransferCalculator({
   onFromCountryChange,
   toCountry: controlledToCountry,
   onToCountryChange,
+  fromCountries,
+  toCountries,
   onSwap,
 }: TransferCalculatorProps) {
   const [internalAmount, setInternalAmount] = useState("500");
@@ -111,6 +115,7 @@ export function TransferCalculator({
             <CountryCurrencySelect
               country={fromCountry}
               onChange={setFromCountry}
+              countries={fromCountries}
               ariaLabel="From African country and currency"
             />
           </div>
@@ -165,6 +170,7 @@ export function TransferCalculator({
             <CountryCurrencySelect
               country={toCountry}
               onChange={setToCountry}
+              countries={toCountries}
               ariaLabel="To African country and currency"
             />
           </div>

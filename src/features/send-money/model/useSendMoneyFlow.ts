@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import type { Recipient } from "@/entities/recipient";
 import type { Transfer } from "@/entities/transfer";
+import type { VerificationStatus } from "@/features/manage-profile";
 import { formatTransferTimestamp } from "@/shared/lib";
 import {
   PROCESSING_DURATION_MS,
@@ -10,13 +11,17 @@ import {
   getClearingRail,
   resolveInterbankAccountName,
   DEFAULT_CONSUMER_LINKED_BANKS,
-  CORRIDOR_BANKS,
   COUNTRY_TO_CURRENCY,
+  PICKUP_ID_TYPES,
   getCorridorBanks,
-  getDeliveryInstructions,
+  getDefaultRoutingCode,
+  getDeliveryFieldSpec,
+  getDeliveryInstructionDetails,
   getDeliveryMethodAvailability,
   getPayoutProviders,
   getPayoutWallets,
+  validateDeliveryDetails,
+  type DeliveryFieldErrors,
   type DeliveryMethodKey,
   type PersonalPaymentMethod,
   type ConsumerLinkedBank,
@@ -45,7 +50,9 @@ export interface RetryTransferDraft {
   bankName: string;
   accountName: string;
   accountNumber?: string;
+  routingCode?: string;
   pickupCity?: string;
+  pickupIdType?: string;
   recipientPhone?: string;
   description?: string;
 }
@@ -60,6 +67,7 @@ export interface UseSendMoneyFlowProps {
   setTransfers: (items: Transfer[]) => void;
   onBeforeSubmit?: () => boolean;
   retryDraft?: RetryTransferDraft | null;
+  verificationStatus?: VerificationStatus;
 }
 
 function createSubmissionId() {
@@ -105,7 +113,9 @@ function parseUrlParams(
   let bank = "";
   let accNum = "";
   let accName = "";
+  let routingCode = "";
   let pickupCity = "";
+  let pickupIdType: string = PICKUP_ID_TYPES[0];
   let recipientPhone = "";
   let description = "";
 
@@ -156,7 +166,9 @@ function parseUrlParams(
     bank = retryDraft.bankName;
     accName = retryDraft.accountName;
     accNum = retryDraft.accountNumber || "";
+    routingCode = retryDraft.routingCode || getDefaultRoutingCode(country, bank);
     pickupCity = retryDraft.pickupCity || "";
+    pickupIdType = retryDraft.pickupIdType || PICKUP_ID_TYPES[0];
     recipientPhone = retryDraft.recipientPhone || "";
     description = retryDraft.description || "";
   } else if (beneficiaryId) {
@@ -168,6 +180,7 @@ function parseUrlParams(
       bank = found.provider || getPayoutProviders(found.country, payoutMethod)[0] || "";
       accNum = found.account.replace(/[^0-9]/g, "");
       accName = found.name;
+      routingCode = getDefaultRoutingCode(country, bank);
       if (payoutMethod === "cash") {
         recipientPhone = accNum;
       }
@@ -175,7 +188,10 @@ function parseUrlParams(
   }
 
   if (!bank) {
-    bank = getPayoutProviders(country, payoutMethod)[0] || CORRIDOR_BANKS.Nigeria[0];
+    bank = getPayoutProviders(country, payoutMethod)[0] || "";
+  }
+  if (!routingCode) {
+    routingCode = getDefaultRoutingCode(country, bank);
   }
 
   return {
@@ -189,7 +205,9 @@ function parseUrlParams(
     bank,
     accNum,
     accName,
+    routingCode,
     pickupCity,
+    pickupIdType,
     recipientPhone,
     description,
   };
@@ -205,6 +223,7 @@ export function useSendMoneyFlow({
   setTransfers,
   onBeforeSubmit,
   retryDraft,
+  verificationStatus,
 }: UseSendMoneyFlowProps) {
   const initialParams = useMemo(() => {
     const parsed = parseUrlParams(recipients, targetRecipientId, retryDraft);
@@ -213,6 +232,7 @@ export function useSendMoneyFlow({
       parsed.country = nextTargetCountry;
       parsed.target = COUNTRY_TO_CURRENCY[nextTargetCountry] || parsed.target;
       parsed.bank = getCorridorBanks(nextTargetCountry)[0] || parsed.bank;
+      parsed.routingCode = getDefaultRoutingCode(nextTargetCountry, parsed.bank);
     }
     return parsed;
   }, [recipients, targetRecipientId, defaultCountry, retryDraft]);
@@ -244,9 +264,12 @@ export function useSendMoneyFlow({
   const [payoutMethod, setPayoutMethod] = useState<PayoutMethod>(() => initialParams.payoutMethod);
   const [bankName, setBankName] = useState<string>(() => initialParams.bank);
   const [accountNumber, setAccountNumber] = useState<string>(() => initialParams.accNum);
+  const [routingCode, setRoutingCode] = useState<string>(() => initialParams.routingCode);
   const [accountName, setAccountName] = useState<string>(() => initialParams.accName);
   const [pickupCity, setPickupCity] = useState<string>(() => initialParams.pickupCity);
+  const [pickupIdType, setPickupIdType] = useState<string>(() => initialParams.pickupIdType);
   const [recipientPhone, setRecipientPhone] = useState<string>(() => initialParams.recipientPhone);
+  const [fieldErrors, setFieldErrors] = useState<DeliveryFieldErrors>({});
   const [isResolvingName, setIsResolvingName] = useState<boolean>(false);
   const [selectedBeneficiaryId, setSelectedBeneficiaryId] = useState<number | null>(
     () => initialParams.beneficiaryId
@@ -318,10 +341,25 @@ export function useSendMoneyFlow({
     [targetCountry, payoutMethod]
   );
 
-  const deliveryInstructions = useMemo(
-    () => getDeliveryInstructions(targetCountry, payoutMethod, bankName, pickupCity),
-    [targetCountry, payoutMethod, bankName, pickupCity]
+  const deliverySpec = useMemo(
+    () => getDeliveryFieldSpec(targetCountry, payoutMethod, bankName),
+    [targetCountry, payoutMethod, bankName]
   );
+
+  const deliveryInstructionDetails = useMemo(
+    () =>
+      getDeliveryInstructionDetails(
+        targetCountry,
+        payoutMethod,
+        bankName,
+        pickupCity,
+        accountName,
+        pickupIdType
+      ),
+    [targetCountry, payoutMethod, bankName, pickupCity, accountName, pickupIdType]
+  );
+
+  const deliveryInstructions = deliveryInstructionDetails.summary;
 
   // Update target country handler (preserves entered details when possible)
   const handleCountryChange = useCallback(
@@ -329,10 +367,19 @@ export function useSendMoneyFlow({
       setTargetCountry(newCountry);
       const newCurr = COUNTRY_TO_CURRENCY[newCountry] || "NGN";
       setTargetCurrency(newCurr);
+      setFieldErrors({});
+      setError(null);
 
       const availability = getDeliveryMethodAvailability(newCountry);
-      const nextMethod: PayoutMethod =
-        payoutMethod === "mobile" && !availability.mobile ? "bank" : payoutMethod;
+      const nextMethod: PayoutMethod = availability[payoutMethod]
+        ? payoutMethod
+        : availability.bank
+          ? "bank"
+          : availability.mobile
+            ? "mobile"
+            : availability.cash
+              ? "cash"
+              : "bank";
       if (nextMethod !== payoutMethod) {
         setPayoutMethod(nextMethod);
       }
@@ -340,11 +387,14 @@ export function useSendMoneyFlow({
       const providers = getPayoutProviders(newCountry, nextMethod);
       const nextProvider = providers[0] || "";
       setBankName(nextProvider);
+      setRoutingCode(
+        nextMethod === "bank" ? getDefaultRoutingCode(newCountry, nextProvider) : ""
+      );
 
       if (!selectedBeneficiaryId && nextMethod !== "cash") {
-        const digits = accountNumber.replace(/\D/g, "");
-        if (digits.length >= 8 && nextProvider) {
-          setAccountName(resolveInterbankAccountName(digits, nextProvider, newCountry));
+        const cleaned = accountNumber.replace(/[^a-zA-Z0-9]/g, "");
+        if (cleaned.length >= 8 && nextProvider && availability.supported) {
+          setAccountName(resolveInterbankAccountName(cleaned, nextProvider, newCountry));
         } else {
           setAccountName("");
         }
@@ -356,20 +406,34 @@ export function useSendMoneyFlow({
   const handlePayoutMethodChange = useCallback(
     (nextMethod: PayoutMethod) => {
       const availability = getDeliveryMethodAvailability(targetCountry);
-      if (nextMethod === "mobile" && !availability.mobile) {
-        setError(`Mobile money is not available in ${targetCountry}.`);
+      if (!availability.supported) {
+        setError(availability.unsupportedReason || `${targetCountry} is not supported at launch.`);
+        return;
+      }
+      if (!availability[nextMethod]) {
+        const label =
+          nextMethod === "mobile"
+            ? "Mobile money"
+            : nextMethod === "cash"
+              ? "Cash pickup"
+              : "Bank transfer";
+        setError(`${label} is not available in ${targetCountry}.`);
         return;
       }
       setPayoutMethod(nextMethod);
       const providers = getPayoutProviders(targetCountry, nextMethod);
       const nextProvider = providers[0] || "";
       setBankName(nextProvider);
+      setRoutingCode(
+        nextMethod === "bank" ? getDefaultRoutingCode(targetCountry, nextProvider) : ""
+      );
+      setFieldErrors({});
       setError(null);
 
       if (!selectedBeneficiaryId && nextMethod !== "cash") {
-        const digits = accountNumber.replace(/\D/g, "");
-        if (digits.length >= 8 && nextProvider) {
-          setAccountName(resolveInterbankAccountName(digits, nextProvider, targetCountry));
+        const cleaned = accountNumber.replace(/[^a-zA-Z0-9]/g, "");
+        if (cleaned.length >= 8 && nextProvider) {
+          setAccountName(resolveInterbankAccountName(cleaned, nextProvider, targetCountry));
         }
       }
     },
@@ -379,31 +443,42 @@ export function useSendMoneyFlow({
   const handleBankNameChange = useCallback(
     (nextBank: string) => {
       setBankName(nextBank);
+      setFieldErrors((prev) => ({ ...prev, provider: undefined }));
+      if (payoutMethod === "bank") {
+        const nextDefaultCode = getDefaultRoutingCode(targetCountry, nextBank);
+        if (nextDefaultCode) {
+          setRoutingCode(nextDefaultCode);
+        }
+      }
       if (!selectedBeneficiaryId && payoutMethod !== "cash") {
-        const digits = accountNumber.replace(/\D/g, "");
-        if (digits.length >= 8 && nextBank) {
-          setAccountName(resolveInterbankAccountName(digits, nextBank, targetCountry));
+        const cleaned = accountNumber.replace(/[^a-zA-Z0-9]/g, "");
+        if (cleaned.length >= 8 && nextBank) {
+          setAccountName(resolveInterbankAccountName(cleaned, nextBank, targetCountry));
         }
       }
     },
     [selectedBeneficiaryId, payoutMethod, accountNumber, targetCountry]
   );
 
-  // Interbank Account Verification trigger: accountNumber.length >= 8
+  // Interbank / Wallet Account Verification trigger
   const handleAccountNumberChange = useCallback(
     (val: string) => {
       setAccountNumber(val);
+      setFieldErrors((prev) => ({ ...prev, accountNumber: undefined }));
       setError(null);
       if (payoutMethod === "cash") return;
 
-      const rawDigits = val.replace(/\D/g, "");
+      const spec = getDeliveryFieldSpec(targetCountry, payoutMethod, bankName);
+      const cleaned = spec.allowAlphanumeric
+        ? val.replace(/[^a-zA-Z0-9]/g, "")
+        : val.replace(/\D/g, "");
 
       if (verificationTimerRef.current) clearTimeout(verificationTimerRef.current);
 
-      if (rawDigits.length >= 8) {
+      if (cleaned.length >= 8) {
         setIsResolvingName(true);
         verificationTimerRef.current = setTimeout(() => {
-          const resolved = resolveInterbankAccountName(rawDigits, bankName, targetCountry);
+          const resolved = resolveInterbankAccountName(cleaned, bankName, targetCountry);
           setAccountName(resolved);
           setIsResolvingName(false);
         }, 350);
@@ -475,18 +550,28 @@ export function useSendMoneyFlow({
   const isFromValid = useMemo(() => getFromValidationError() === null, [getFromValidationError]);
 
   const isToValid = useMemo(() => {
-    if (!bankName.trim()) return false;
-    if (payoutMethod === "cash") {
-      const cleanPhone = recipientPhone.replace(/\D/g, "");
-      return (
-        accountName.trim().length >= 3 &&
-        cleanPhone.length >= 7 &&
-        pickupCity.trim().length >= 2
-      );
-    }
-    const cleanNum = accountNumber.replace(/\D/g, "");
-    return !isResolvingName && cleanNum.length >= 8 && accountName.trim().length > 0;
-  }, [bankName, payoutMethod, recipientPhone, accountName, pickupCity, isResolvingName, accountNumber]);
+    return validateDeliveryDetails({
+      country: targetCountry,
+      method: payoutMethod,
+      provider: bankName,
+      accountNumber,
+      routingCode,
+      accountName,
+      recipientPhone,
+      pickupCity,
+      isResolvingName,
+    }).valid;
+  }, [
+    targetCountry,
+    payoutMethod,
+    bankName,
+    accountNumber,
+    routingCode,
+    accountName,
+    recipientPhone,
+    pickupCity,
+    isResolvingName,
+  ]);
 
   // Beneficiary Selection Handler
   const selectBeneficiary = useCallback(
@@ -499,17 +584,24 @@ export function useSendMoneyFlow({
 
       const nextMethod = inferRecipientMethod(beneficiary.method, beneficiary.country);
       setPayoutMethod(nextMethod);
-      setBankName(
-        beneficiary.provider || getPayoutProviders(beneficiary.country, nextMethod)[0] || ""
+      const nextProvider =
+        beneficiary.provider || getPayoutProviders(beneficiary.country, nextMethod)[0] || "";
+      setBankName(nextProvider);
+      setRoutingCode(
+        nextMethod === "bank" ? getDefaultRoutingCode(beneficiary.country, nextProvider) : ""
       );
+      const spec = getDeliveryFieldSpec(beneficiary.country, nextMethod, nextProvider);
       const cleanAcc = beneficiary.account.replace(/[^0-9]/g, "");
       if (nextMethod === "cash") {
         setRecipientPhone(cleanAcc.length >= 7 ? cleanAcc : "8012345678");
         setPickupCity((prev) => prev || beneficiary.country);
       } else {
-        setAccountNumber(cleanAcc.length >= 8 ? cleanAcc : "0123456789");
+        const minDemoDigits = Math.max(10, spec.minLength);
+        const fallbackAcc = "0123456789012345".slice(0, minDemoDigits);
+        setAccountNumber(cleanAcc.length >= spec.minLength ? cleanAcc : fallbackAcc);
       }
       setAccountName(beneficiary.name);
+      setFieldErrors({});
       setError(null);
     },
     [setTargetRecipientId]
@@ -522,10 +614,19 @@ export function useSendMoneyFlow({
     setAccountName("");
     setRecipientPhone("");
     setPickupCity("");
-  }, [setTargetRecipientId]);
+    setRoutingCode(
+      payoutMethod === "bank" ? getDefaultRoutingCode(targetCountry, bankName) : ""
+    );
+    setFieldErrors({});
+    setError(null);
+  }, [setTargetRecipientId, payoutMethod, targetCountry, bankName]);
 
   // Navigation Handlers
   const goToTo = useCallback(() => {
+    if (verificationStatus && verificationStatus !== "approved") {
+      setError("Complete identity verification before initiating a transfer.");
+      return;
+    }
     const validationError = getFromValidationError();
     if (validationError) {
       setError(validationError);
@@ -533,52 +634,39 @@ export function useSendMoneyFlow({
     }
     setError(null);
     setStep("to");
-  }, [getFromValidationError]);
+  }, [getFromValidationError, verificationStatus]);
 
   const goToReview = useCallback(() => {
+    const result = validateDeliveryDetails({
+      country: targetCountry,
+      method: payoutMethod,
+      provider: bankName,
+      accountNumber,
+      routingCode,
+      accountName,
+      recipientPhone,
+      pickupCity,
+      isResolvingName,
+    });
+    if (!result.valid) {
+      setFieldErrors(result.fieldErrors);
+      setError(result.error);
+      return;
+    }
+    setFieldErrors({});
     setError(null);
-    if (payoutMethod !== "cash" && isResolvingName) {
-      setError("Please wait for recipient verification to complete.");
-      return;
-    }
-    if (!bankName.trim()) {
-      setError(
-        payoutMethod === "cash"
-          ? "Select a cash pickup agent to continue."
-          : payoutMethod === "mobile"
-            ? "Select a mobile money provider to continue."
-            : "Select a destination bank to continue."
-      );
-      return;
-    }
-    if (payoutMethod === "cash") {
-      if (accountName.trim().length < 3) {
-        setError("Enter the recipient's full legal name (matching government ID).");
-        return;
-      }
-      if (recipientPhone.replace(/\D/g, "").length < 7) {
-        setError("Enter a valid recipient phone number for pickup notifications.");
-        return;
-      }
-      if (pickupCity.trim().length < 2) {
-        setError("Enter the destination pickup city or branch area.");
-        return;
-      }
-      setStep("review");
-      return;
-    }
-
-    const cleanNum = accountNumber.replace(/\D/g, "");
-    if (cleanNum.length < 8 || !accountName.trim()) {
-      setError(
-        payoutMethod === "mobile"
-          ? "Enter a valid recipient mobile number (at least 8 digits)."
-          : "Enter a valid account number (at least 8 digits) to verify recipient."
-      );
-      return;
-    }
     setStep("review");
-  }, [payoutMethod, isResolvingName, bankName, accountName, recipientPhone, pickupCity, accountNumber]);
+  }, [
+    targetCountry,
+    payoutMethod,
+    bankName,
+    accountNumber,
+    routingCode,
+    accountName,
+    recipientPhone,
+    pickupCity,
+    isResolvingName,
+  ]);
 
   const goBack = useCallback(() => {
     if (isSubmittingRef.current) return;
@@ -590,6 +678,10 @@ export function useSendMoneyFlow({
 
   // Execution Step: [processing] -> [success | failed]
   const confirmTransfer = useCallback(() => {
+    if (verificationStatus && verificationStatus !== "approved") {
+      setError("Complete identity verification before sending a transfer.");
+      return;
+    }
     if (onBeforeSubmit && !onBeforeSubmit()) return;
     if (isSubmittingRef.current || step === "processing" || step === "success") {
       return;
@@ -748,6 +840,7 @@ export function useSendMoneyFlow({
     recipients,
     setRecipients,
     schedule,
+    verificationStatus,
   ]);
 
   const retryTransfer = useCallback(() => {
@@ -789,9 +882,12 @@ export function useSendMoneyFlow({
     setAmount("500");
     setPayoutMethod("bank");
     setAccountNumber("");
+    setRoutingCode(getDefaultRoutingCode(targetCountry, bankName));
     setAccountName("");
     setPickupCity("");
+    setPickupIdType(PICKUP_ID_TYPES[0]);
     setRecipientPhone("");
+    setFieldErrors({});
     setSelectedBeneficiaryId(null);
     setTargetRecipientId(null);
     setDescription("");
@@ -805,7 +901,7 @@ export function useSendMoneyFlow({
     setCompletedTransfer(null);
     setProcessingProgress(0);
     setProcessingMessage("");
-  }, [clearProcessingTimers, setTargetRecipientId]);
+  }, [clearProcessingTimers, setTargetRecipientId, targetCountry, bankName]);
 
   return {
     step,
@@ -831,6 +927,8 @@ export function useSendMoneyFlow({
     payoutMethod,
     setPayoutMethod: handlePayoutMethodChange,
     deliveryAvailability,
+    deliverySpec,
+    deliveryInstructionDetails,
     deliveryInstructions,
     availableWallets,
     availableProviders,
@@ -838,12 +936,33 @@ export function useSendMoneyFlow({
     setBankName: handleBankNameChange,
     accountNumber,
     setAccountNumber: handleAccountNumberChange,
+    routingCode,
+    setRoutingCode: (val: string) => {
+      setRoutingCode(val.replace(/\D/g, "").slice(0, 6));
+      setFieldErrors((prev) => ({ ...prev, routingCode: undefined }));
+      setError(null);
+    },
     accountName,
-    setAccountName,
+    setAccountName: (val: string) => {
+      setAccountName(val);
+      setFieldErrors((prev) => ({ ...prev, accountName: undefined }));
+      setError(null);
+    },
     pickupCity,
-    setPickupCity,
+    setPickupCity: (val: string) => {
+      setPickupCity(val);
+      setFieldErrors((prev) => ({ ...prev, pickupCity: undefined }));
+      setError(null);
+    },
+    pickupIdType,
+    setPickupIdType,
     recipientPhone,
-    setRecipientPhone,
+    setRecipientPhone: (val: string) => {
+      setRecipientPhone(val);
+      setFieldErrors((prev) => ({ ...prev, recipientPhone: undefined }));
+      setError(null);
+    },
+    fieldErrors,
     isResolvingName,
     selectedBeneficiaryId,
     saveBeneficiary,
