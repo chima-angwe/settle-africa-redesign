@@ -1,30 +1,128 @@
-import type React from 'react';
-import { useState } from 'react';
-import { Icon, PageHeading } from '@/shared/ui';
-import type { Transfer } from '@/entities/transfer';
+import type React from "react";
+import { useMemo, useState } from "react";
+import { getErrorMessage } from "@/shared/api";
+import { Icon, PageHeading } from "@/shared/ui";
+import type { Transfer } from "@/entities/transfer";
+import { CountrySelect } from "@/entities/country";
+import { useLocales } from "@/features/locales";
+import { useTransactions } from "@/features/transactions";
+import { useTrackTransaction } from "../hooks/useTrackTransaction";
+import type { TrackTransactionResult } from "../api/track-transfer.types";
 
 export interface TrackProps {
   transfers: Transfer[];
 }
 
-export function Track({ transfers }: { transfers: Transfer[] }) {
+export function Track({ transfers }: TrackProps) {
+  const { data: liveTransfers = [] } = useTransactions();
+  const { data: locales = [] } = useLocales();
+  const trackMutation = useTrackTransaction();
+
+  const knownTransfers = useMemo(() => {
+    const byId = new Map<string, Transfer>();
+    for (const item of liveTransfers) {
+      byId.set(item.id.toLowerCase(), item);
+    }
+    for (const item of transfers) {
+      if (!byId.has(item.id.toLowerCase())) {
+        byId.set(item.id.toLowerCase(), item);
+      }
+    }
+    return Array.from(byId.values());
+  }, [liveTransfers, transfers]);
+
+  const supportedCountries = useMemo(
+    () => locales.map((locale) => locale.name),
+    [locales],
+  );
+  const isoByCountry = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const locale of locales) {
+      if (locale.iso) {
+        map[locale.name] = locale.iso.toLowerCase();
+      }
+    }
+    return map;
+  }, [locales]);
+
   const [reference, setReference] = useState("");
-  const [result, setResult] = useState<Transfer | null | undefined>(undefined);
+  const [recipientName, setRecipientName] = useState("");
+  const [country, setCountry] = useState("");
+  const [trackedResult, setTrackedResult] = useState<{
+    result: TrackTransactionResult;
+    name: string;
+    country: string;
+    matched?: Transfer;
+  } | null>(null);
   const [error, setError] = useState("");
+
+  const findKnownTransfer = (refId: string) =>
+    knownTransfers.find(
+      (item) => item.id.trim().toLowerCase() === refId.trim().toLowerCase(),
+    );
+
+  const runTrack = (refId: string, nameVal: string, countryVal: string) => {
+    const cleanId = refId.trim();
+    const cleanName = nameVal.trim();
+    const cleanCountry = countryVal.trim();
+
+    if (!cleanId) {
+      setError("Enter a transfer reference.");
+      return;
+    }
+
+    setError("");
+    trackMutation.mutate(
+      {
+        id: cleanId,
+        name: cleanName,
+        destinaton: {
+          country: cleanCountry,
+        },
+      },
+      {
+        onSuccess: (result) => {
+          const matched = findKnownTransfer(result.id) ?? findKnownTransfer(cleanId);
+          setTrackedResult({
+            result,
+            name: cleanName || matched?.name || "Recipient",
+            country: cleanCountry || matched?.country || "",
+            matched,
+          });
+        },
+        onError: (err) => {
+          setTrackedResult(null);
+          setError(getErrorMessage(err, "Unable to track transaction."));
+        },
+      },
+    );
+  };
+
+  const handleReferenceChange = (nextRef: string) => {
+    setReference(nextRef);
+    setError("");
+    const matched = findKnownTransfer(nextRef);
+    if (matched) {
+      setRecipientName(matched.name);
+      setCountry(matched.country);
+    }
+  };
+
   const lookup = (event: React.FormEvent) => {
     event.preventDefault();
-    setError("");
-    const found = transfers.find(
-      (item) => item.id.toLowerCase() === reference.trim().toLowerCase(),
-    );
-    setResult(found || null);
-    if (!reference.trim()) setError("Enter a transfer reference.");
+    const matched = findKnownTransfer(reference);
+    const resolvedName = recipientName.trim() || matched?.name || "";
+    const resolvedCountry = country.trim() || matched?.country || "";
+    runTrack(reference, resolvedName, resolvedCountry);
   };
-  const completed = result?.status === "Completed";
-  const processing = result?.status === "Processing";
-  const failed = result?.status === "Failed";
-  const cancelled = result?.status === "Cancelled";
+
+  const activeStatus = trackedResult?.result.status;
+  const completed = activeStatus === "Completed";
+  const processing = activeStatus === "Processing";
+  const failed = activeStatus === "Failed";
+  const cancelled = activeStatus === "Cancelled";
   const terminated = failed || cancelled;
+
   return (
     <>
       <PageHeading title="Track a transfer" />
@@ -38,47 +136,102 @@ export function Track({ transfers }: { transfers: Transfer[] }) {
             <input
               id="reference"
               value={reference}
-              onChange={(e) => setReference(e.target.value)}
-              placeholder="e.g. ST-240918"
+              onChange={(e) => handleReferenceChange(e.target.value)}
+              placeholder="e.g. 37fe577c"
             />
-            <button className="button button-primary cursor-pointer" type="submit">
-              Track transfer <span>→</span>
+            <button
+              className="button button-primary cursor-pointer disabled:opacity-50"
+              type="submit"
+              disabled={trackMutation.isPending}
+            >
+              {trackMutation.isPending ? "Tracking..." : "Track transfer"} <span>→</span>
             </button>
           </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+            <div>
+              <label
+                htmlFor="track-recipient-name"
+                className="block text-[10px] font-bold tracking-wider uppercase text-muted mb-1"
+              >
+                Recipient name
+              </label>
+              <input
+                id="track-recipient-name"
+                value={recipientName}
+                onChange={(e) => setRecipientName(e.target.value)}
+                placeholder="e.g. John Doe"
+                className="w-full"
+              />
+            </div>
+            <div>
+              <span className="block text-[10px] font-bold tracking-wider uppercase text-muted mb-1">
+                Destination country
+              </span>
+              {supportedCountries.length > 0 ? (
+                <CountrySelect
+                  value={country}
+                  countries={supportedCountries}
+                  isoByCountry={isoByCountry}
+                  onChange={setCountry}
+                  placeholder="Select country"
+                />
+              ) : (
+                <input
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                  placeholder="e.g. Kenya"
+                  className="w-full"
+                />
+              )}
+            </div>
+          </div>
+
           {error && <small className="field-error">{error}</small>}
         </form>
-        <div className="track-example">
-          <span>References</span>
-          {transfers.slice(0, 3).map((item) => (
-            <button
-              key={item.id}
-              onClick={() => {
-                setReference(item.id);
-                setResult(item);
-                setError("");
-              }}
-            >
-              {item.id}
-            </button>
-          ))}
-        </div>
+
+        {knownTransfers.length > 0 && (
+          <div className="track-example">
+            <span>Recent references</span>
+            {knownTransfers.slice(0, 4).map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                disabled={trackMutation.isPending}
+                onClick={() => {
+                  setReference(item.id);
+                  setRecipientName(item.name);
+                  setCountry(item.country);
+                  runTrack(item.id, item.name, item.country);
+                }}
+              >
+                {item.id}
+              </button>
+            ))}
+          </div>
+        )}
       </section>
-      {result && result !== null && (
+
+      {trackedResult && (
         <section className="track-result">
           <div className="track-result-head">
-            <span className={`status status-${result.status.toLowerCase()}`}>
+            <span className={`status status-${trackedResult.result.status.toLowerCase()}`}>
               <i />
-              {result.status}
+              {trackedResult.result.status}
             </span>
             <span>
-              <code>{result.id}</code>
+              <code>{trackedResult.result.id}</code>
             </span>
           </div>
           <h2>
-            {result.name} · {result.country}
+            {trackedResult.name}
+            {trackedResult.country ? ` · ${trackedResult.country}` : ""}
           </h2>
           <p>
-            {result.currency} {result.amount.toFixed(2)} · {result.date}
+            {trackedResult.matched
+              ? `${trackedResult.matched.currency} ${trackedResult.matched.amount.toFixed(2)} · `
+              : ""}
+            {trackedResult.result.timestamp || trackedResult.matched?.date || "Updated just now"}
           </p>
           <div className="timeline">
             <div className="timeline-item complete">
@@ -92,7 +245,15 @@ export function Track({ transfers }: { transfers: Transfer[] }) {
             <div
               className={`timeline-item ${completed ? "complete" : terminated ? "" : "current"}`}
             >
-              <span>{completed ? <Icon name="check" size={13} /> : terminated ? <Icon name="close" size={12} /> : <i />}</span>
+              <span>
+                {completed ? (
+                  <Icon name="check" size={13} />
+                ) : terminated ? (
+                  <Icon name="close" size={12} />
+                ) : (
+                  <i />
+                )}
+              </span>
               <div>
                 <strong>
                   {completed
@@ -103,16 +264,21 @@ export function Track({ transfers }: { transfers: Transfer[] }) {
                         ? "Transfer cancelled"
                         : processing
                           ? "Transfer processing"
-                          : "Awaiting processing"}
+                          : "Awaiting settlement"}
                 </strong>
-                {failed && (
+                {trackedResult.result.message && (
+                  <small>{trackedResult.result.message}</small>
+                )}
+                {!trackedResult.result.message && failed && (
                   <small>
-                    {result.failureReason || "Partner clearing rail declined or timed out."}
+                    {trackedResult.matched?.failureReason ||
+                      "Partner clearing rail declined or timed out."}
                   </small>
                 )}
-                {cancelled && (
+                {!trackedResult.result.message && cancelled && (
                   <small>
-                    {result.cancellationReason || "Cancelled before settlement."}
+                    {trackedResult.matched?.cancellationReason ||
+                      "Cancelled before settlement."}
                   </small>
                 )}
               </div>
@@ -123,7 +289,7 @@ export function Track({ transfers }: { transfers: Transfer[] }) {
                 <strong>
                   {terminated
                     ? "Delivery not completed"
-                    : result.method === "Cash pickup"
+                    : trackedResult.matched?.method === "Cash pickup"
                       ? "Ready for cash pickup"
                       : "Recipient delivery"}
                 </strong>
@@ -131,11 +297,6 @@ export function Track({ transfers }: { transfers: Transfer[] }) {
             </div>
           </div>
         </section>
-      )}
-      {result === null && (
-        <div className="notice error-notice track-not-found">
-          No transfer found with that reference.
-        </div>
       )}
     </>
   );

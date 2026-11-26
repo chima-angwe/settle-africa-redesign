@@ -15,6 +15,8 @@ export interface CountryCurrencySelectProps {
   className?: string;
   triggerClassName?: string;
   countries?: readonly string[];
+  currencyByCountry?: Record<string, string>;
+  isoByCountry?: Record<string, string>;
 }
 
 export function CountryCurrencySelect({
@@ -25,13 +27,16 @@ export function CountryCurrencySelect({
   className = "",
   triggerClassName = "",
   countries: allowedCountries,
+  currencyByCountry,
+  isoByCountry,
 }: CountryCurrencySelectProps) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
+  const hasCustomCountries = allowedCountries !== undefined;
   const availableCountries = useMemo(
-    () => (allowedCountries && allowedCountries.length > 0 ? allowedCountries : allCountries),
-    [allowedCountries],
+    () => (hasCustomCountries ? allowedCountries : allCountries),
+    [hasCustomCountries, allowedCountries],
   );
 
   const orderedCountries = useMemo(() => {
@@ -39,25 +44,32 @@ export function CountryCurrencySelect({
     return availableCountries.includes("Nigeria") ? ["Nigeria", ...rest] : rest;
   }, [availableCountries]);
 
-  const selectedCountry = allCountries.includes(country)
+  const resolveCurrency = (name: string) =>
+    currencyByCountry?.[name] || (!hasCustomCountries ? countryCurrencies[name] : "") || "";
+  const resolveFlag = (name: string) =>
+    (isoByCountry?.[name] || countryFlag(name)).toLowerCase();
+
+  const selectedCountry = availableCountries.includes(country)
     ? country
-    : availableCountries[0] || "Nigeria";
-  const selectedCurrency = countryCurrencies[selectedCountry] || "NGN";
-  const selectedFlag = countryFlag(selectedCountry);
+    : availableCountries[0] || "";
+  const selectedCurrency = selectedCountry ? resolveCurrency(selectedCountry) : "---";
+  const selectedFlag = selectedCountry ? resolveFlag(selectedCountry) : "";
 
   const options = useMemo(
     () =>
       orderedCountries.map((item) => {
-        const code = countryCurrencies[item] || "NGN";
+        const code =
+          currencyByCountry?.[item] || (!hasCustomCountries ? countryCurrencies[item] : "") || "";
+        const flag = (isoByCountry?.[item] || countryFlag(item)).toLowerCase();
         return {
           value: item,
           label: item,
           badge: code,
           searchText: `${item} ${code}`,
-          icon: <CountryFlag code={countryFlag(item)} country={item} />,
+          icon: <CountryFlag code={flag} country={item} />,
         };
       }),
-    [orderedCountries],
+    [orderedCountries, currencyByCountry, isoByCountry, hasCustomCountries],
   );
 
   return (
@@ -65,14 +77,17 @@ export function CountryCurrencySelect({
       <button
         ref={triggerRef}
         type="button"
+        disabled={availableCountries.length === 0}
         aria-label={ariaLabel}
         aria-expanded={open}
         aria-haspopup="listbox"
         onClick={() => setOpen((current) => !current)}
-        className={`flex items-center gap-1.5 px-2 py-1 rounded-lg bg-transparent hover:bg-soft text-ink font-semibold text-xs sm:text-sm transition-colors cursor-pointer ${triggerClassName}`}
+        className={`flex items-center gap-1.5 px-2 py-1 rounded-lg bg-transparent hover:bg-soft text-ink font-semibold text-xs sm:text-sm transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${triggerClassName}`}
       >
-        <CountryFlag code={selectedFlag} country={selectedCountry} />
-        <span>{selectedCurrency}</span>
+        {selectedFlag && selectedCountry ? (
+          <CountryFlag code={selectedFlag} country={selectedCountry} />
+        ) : null}
+        <span>{selectedCurrency || "---"}</span>
         <Icon
           name="chevron"
           size={14}
@@ -88,7 +103,7 @@ export function CountryCurrencySelect({
         options={options}
         value={selectedCountry}
         onSelect={(nextCountry) => {
-          const code = countryCurrencies[nextCountry] || "NGN";
+          const code = resolveCurrency(nextCountry);
           onChange(nextCountry, code);
         }}
         searchable

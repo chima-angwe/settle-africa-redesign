@@ -1,4 +1,4 @@
-import { callingCodes, countryCurrencies, payoutOptions } from "@/entities/country";
+import { callingCodes, countryCurrencies } from "@/entities/country";
 
 /**
  * Technical Data & FX Engine Specification for Settle Africa
@@ -154,11 +154,15 @@ export function calculatePersonalRemittance(
   amount: number,
   sourceCurrency: string,
   targetCurrency: string,
-  customExchangeRate?: number
+  customExchangeRate?: number,
+  customFeeAmount?: number
 ): PersonalRemittanceCalculation {
   const safeAmount = Math.max(0, isNaN(amount) ? 0 : amount);
   const rate = customExchangeRate ?? getExchangeRate(sourceCurrency, targetCurrency);
-  const feeAmount = safeAmount * FEE_RATE;
+  const feeAmount =
+    customFeeAmount !== undefined && Number.isFinite(customFeeAmount)
+      ? Math.max(0, customFeeAmount)
+      : safeAmount * FEE_RATE;
   const totalDebit = safeAmount + feeAmount;
   const recipientReceives = safeAmount * rate;
 
@@ -322,79 +326,13 @@ export function getClearingRail(currency: string, country?: string): CorridorCle
 }
 
 // ==========================================
-// 5. Supported Currencies & Metadata
+// 5. Currency Metadata
 // ==========================================
-export interface CurrencyInfo {
-  code: string;
-  name: string;
-  symbol: string;
-  country: string;
-  flagCode: string;
-}
-
-export const SUPPORTED_SOURCE_CURRENCIES: CurrencyInfo[] = [
-  { code: "NGN", name: "Nigerian Naira", symbol: "₦", country: "Nigeria", flagCode: "ng" },
-  { code: "KES", name: "Kenyan Shilling", symbol: "KSh", country: "Kenya", flagCode: "ke" },
-  { code: "GHS", name: "Ghanaian Cedi", symbol: "GH₵", country: "Ghana", flagCode: "gh" },
-  { code: "ZAR", name: "South African Rand", symbol: "R", country: "South Africa", flagCode: "za" },
-  { code: "XOF", name: "West African CFA", symbol: "CFA", country: "Côte d’Ivoire", flagCode: "ci" },
-  { code: "EGP", name: "Egyptian Pound", symbol: "E£", country: "Egypt", flagCode: "eg" },
-  { code: "RWF", name: "Rwandan Franc", symbol: "FRw", country: "Rwanda", flagCode: "rw" },
-  { code: "UGX", name: "Ugandan Shilling", symbol: "USh", country: "Uganda", flagCode: "ug" },
-  { code: "TZS", name: "Tanzanian Shilling", symbol: "TSh", country: "Tanzania", flagCode: "tz" },
-];
-
-export const CORRIDOR_RECEIVE_CURRENCIES: CurrencyInfo[] = [
-  { code: "NGN", name: "Nigerian Naira", symbol: "₦", country: "Nigeria", flagCode: "ng" },
-  { code: "KES", name: "Kenyan Shilling", symbol: "KSh", country: "Kenya", flagCode: "ke" },
-  { code: "GHS", name: "Ghanaian Cedi", symbol: "GH₵", country: "Ghana", flagCode: "gh" },
-  { code: "ZAR", name: "South African Rand", symbol: "R", country: "South Africa", flagCode: "za" },
-  { code: "XOF", name: "West African CFA", symbol: "CFA", country: "Côte d’Ivoire", flagCode: "ci" },
-  { code: "RWF", name: "Rwandan Franc", symbol: "FRw", country: "Rwanda", flagCode: "rw" },
-  { code: "UGX", name: "Ugandan Shilling", symbol: "USh", country: "Uganda", flagCode: "ug" },
-  { code: "EGP", name: "Egyptian Pound", symbol: "E£", country: "Egypt", flagCode: "eg" },
-  { code: "TZS", name: "Tanzanian Shilling", symbol: "TSh", country: "Tanzania", flagCode: "tz" },
-];
-
 export const COUNTRY_TO_CURRENCY: Record<string, string> = {
   ...countryCurrencies,
 };
 
 export type DeliveryMethodKey = "bank" | "mobile" | "cash";
-
-export const LAUNCH_ROUTE_COUNTRIES = [
-  "Nigeria",
-  "Kenya",
-  "Ghana",
-  "South Africa",
-  "Côte d’Ivoire",
-  "Rwanda",
-  "Uganda",
-  "Egypt",
-  "Tanzania",
-] as const;
-
-export function isLaunchRouteSupported(country: string): boolean {
-  return (LAUNCH_ROUTE_COUNTRIES as readonly string[]).includes(country);
-}
-
-export const CASH_PICKUP_AGENTS: Record<string, string[]> = {
-  Nigeria: ["MoneyGram Nigeria", "Western Union", "Ria Cash Pickup"],
-  Kenya: ["Western Union Kenya", "MoneyGram", "Posta Kenya Cash"],
-  Ghana: ["MoneyGram Ghana", "Western Union", "Ria Cash Pickup"],
-  "South Africa": ["Mukuru Cash Pickup", "MoneyGram", "Western Union"],
-  "Côte d’Ivoire": ["MoneyGram Côte d’Ivoire", "Western Union", "Ria Cash Pickup"],
-  Rwanda: ["MoneyGram Rwanda", "Western Union", "Ria Cash Pickup"],
-  Uganda: ["Western Union Uganda", "MoneyGram", "Ria Cash Pickup"],
-  Egypt: ["Western Union Egypt", "MoneyGram", "Fawry Cash Pickup"],
-  Tanzania: ["Western Union Tanzania", "MoneyGram", "Ria Cash Pickup"],
-};
-
-const DEFAULT_CASH_PICKUP_AGENTS = [
-  "MoneyGram",
-  "Western Union",
-  "Ria Cash Pickup",
-];
 
 const SOUTH_AFRICA_BRANCH_CODES: Record<string, string> = {
   "Standard Bank": "051001",
@@ -410,34 +348,6 @@ export function getDefaultRoutingCode(country: string, provider?: string): strin
   return (provider && SOUTH_AFRICA_BRANCH_CODES[provider]) || "250655";
 }
 
-export function getCorridorBanks(country: string): string[] {
-  if (!isLaunchRouteSupported(country)) return [];
-  return CORRIDOR_BANKS[country] || payoutOptions[country]?.banks || [];
-}
-
-export function getPayoutWallets(country: string): string[] {
-  if (!isLaunchRouteSupported(country)) return [];
-  return payoutOptions[country]?.wallets || [];
-}
-
-export function getCashPickupAgents(country: string): string[] {
-  if (!isLaunchRouteSupported(country)) return [];
-  return CASH_PICKUP_AGENTS[country] || DEFAULT_CASH_PICKUP_AGENTS;
-}
-
-export function getPayoutProviders(
-  country: string,
-  payoutMethod: DeliveryMethodKey = "bank",
-): string[] {
-  if (payoutMethod === "mobile") {
-    return getPayoutWallets(country);
-  }
-  if (payoutMethod === "cash") {
-    return getCashPickupAgents(country);
-  }
-  return getCorridorBanks(country);
-}
-
 export interface DeliveryMethodAvailability {
   supported: boolean;
   bank: boolean;
@@ -447,25 +357,6 @@ export interface DeliveryMethodAvailability {
   wallets: string[];
   agents: string[];
   unsupportedReason?: string;
-}
-
-export function getDeliveryMethodAvailability(country: string): DeliveryMethodAvailability {
-  const supported = isLaunchRouteSupported(country);
-  const banks = getCorridorBanks(country);
-  const wallets = getPayoutWallets(country);
-  const agents = getCashPickupAgents(country);
-  return {
-    supported,
-    bank: supported && banks.length > 0,
-    mobile: supported && wallets.length > 0,
-    cash: supported && agents.length > 0,
-    banks,
-    wallets,
-    agents,
-    unsupportedReason: supported
-      ? undefined
-      : `${country} is not enabled for launch payouts. Select one of the 9 supported launch routes.`,
-  };
 }
 
 export const PICKUP_ID_TYPES = [
@@ -608,12 +499,33 @@ const ROUTE_RULES: Record<string, BankFormatRule> = {
   },
 };
 
+const DEFAULT_ROUTE_RULE: BankFormatRule = {
+  accountLabel: "Bank account number",
+  accountPlaceholder: "0123456789",
+  accountHint: "Enter the recipient's bank account number or IBAN",
+  allowAlphanumeric: true,
+  minLength: 6,
+  maxLength: 34,
+  pickupCityPlaceholder: "e.g. City centre",
+  mobileDigits: [7, 12],
+  mobilePlaceholder: "0712 345 678",
+};
+
+function getRouteRule(country: string): BankFormatRule {
+  if (ROUTE_RULES[country]) return ROUTE_RULES[country];
+  const normalized = country.trim().replace(/'/g, "’").toLowerCase();
+  const matched = Object.entries(ROUTE_RULES).find(
+    ([key]) => key.toLowerCase() === normalized,
+  );
+  return matched?.[1] || DEFAULT_ROUTE_RULE;
+}
+
 export function getDeliveryFieldSpec(
   country: string,
   method: DeliveryMethodKey,
   provider?: string,
 ): DeliveryFieldSpec {
-  const rule = ROUTE_RULES[country] || ROUTE_RULES.Nigeria;
+  const rule = getRouteRule(country);
   const dialCode = callingCodes[country] || "+";
 
   if (method === "mobile") {
@@ -692,6 +604,9 @@ export interface DeliveryValidationInput {
   country: string;
   method: DeliveryMethodKey;
   provider: string;
+  availableProviders?: readonly string[];
+  isCountrySupported?: boolean;
+  isMethodAvailable?: boolean;
   accountNumber: string;
   routingCode?: string;
   accountName: string;
@@ -729,15 +644,16 @@ export function validateDeliveryDetails(
   input: DeliveryValidationInput,
 ): DeliveryValidationResult {
   const fieldErrors: DeliveryFieldErrors = {};
-  const availability = getDeliveryMethodAvailability(input.country);
 
-  if (!availability.supported) {
-    const msg = availability.unsupportedReason || `Payouts to ${input.country} are not supported.`;
+  if (!input.country.trim() || input.isCountrySupported === false) {
+    const msg = input.country.trim()
+      ? `Payouts to ${input.country} are not supported.`
+      : "Select a supported destination country.";
     fieldErrors.country = msg;
     return { valid: false, error: msg, fieldErrors };
   }
 
-  if (!availability[input.method]) {
+  if (input.isMethodAvailable === false) {
     const label =
       input.method === "mobile"
         ? "Mobile money"
@@ -748,9 +664,14 @@ export function validateDeliveryDetails(
     return { valid: false, error: msg, fieldErrors };
   }
 
-  const providers = getPayoutProviders(input.country, input.method);
+  const providers = input.availableProviders ?? [];
   const trimmedProvider = input.provider.trim();
-  if (!trimmedProvider || (providers.length > 0 && !providers.includes(trimmedProvider))) {
+  const isProviderSupported =
+    Boolean(trimmedProvider) &&
+    providers.some(
+      (provider) => provider.trim().toLowerCase() === trimmedProvider.toLowerCase(),
+    );
+  if (!isProviderSupported) {
     const msg =
       input.method === "cash"
         ? "Select a supported cash pickup network."
@@ -761,7 +682,7 @@ export function validateDeliveryDetails(
     return { valid: false, error: msg, fieldErrors };
   }
 
-  const rule = ROUTE_RULES[input.country] || ROUTE_RULES.Nigeria;
+  const rule = getRouteRule(input.country);
 
   if (input.method === "cash") {
     const trimmedName = input.accountName.trim();
@@ -830,6 +751,10 @@ export function validateDeliveryDetails(
         fieldErrors.accountNumber = msg;
         return { valid: false, error: msg, fieldErrors };
       }
+    } else if (compact.length < rule.minLength || compact.length > rule.maxLength) {
+      const msg = `Enter a valid ${input.country} bank account number (${rule.minLength}–${rule.maxLength} characters).`;
+      fieldErrors.accountNumber = msg;
+      return { valid: false, error: msg, fieldErrors };
     }
   } else {
     const digitsOnly = input.accountNumber.replace(/\D/g, "");
@@ -952,187 +877,7 @@ export function getDeliveryInstructions(
 }
 
 // ==========================================
-// 6. Corridor Partner Banks & Institutions
-// ==========================================
-export const CORRIDOR_BANKS: Record<string, string[]> = {
-  Nigeria: [
-    "Access Bank",
-    "First Bank of Nigeria",
-    "Guaranty Trust Bank (GTBank)",
-    "Moniepoint MFB",
-    "OPay Digital Services",
-    "United Bank for Africa (UBA)",
-    "Zenith Bank",
-    "Kuda Bank",
-    "Fidelity Bank",
-  ],
-  Kenya: [
-    "Equity Bank Kenya",
-    "KCB Bank Kenya",
-    "Co-operative Bank of Kenya",
-    "Absa Bank Kenya",
-    "Standard Chartered Kenya",
-    "NCBA Bank",
-    "Stanbic Bank Kenya",
-  ],
-  Ghana: [
-    "Ecobank Ghana",
-    "GCB Bank",
-    "Stanbic Bank Ghana",
-    "Absa Bank Ghana",
-    "Fidelity Bank Ghana",
-    "Zenith Bank Ghana",
-    "CalBank",
-  ],
-  "South Africa": [
-    "Standard Bank",
-    "First National Bank (FNB)",
-    "Absa Bank",
-    "Nedbank",
-    "Capitec Bank",
-    "Investec",
-  ],
-  Rwanda: [
-    "Bank of Kigali",
-    "I&M Bank Rwanda",
-    "Equity Bank Rwanda",
-    "Cogebanque",
-    "BPR Bank Rwanda",
-  ],
-  Uganda: [
-    "Stanbic Bank Uganda",
-    "Centenary Bank",
-    "Standard Chartered Uganda",
-    "dfcu Bank",
-    "Absa Bank Uganda",
-  ],
-  Egypt: [
-    "National Bank of Egypt (NBE)",
-    "Banque Misr",
-    "Commercial International Bank (CIB)",
-    "QNB Alahli",
-    "AlexBank",
-  ],
-  "Côte d’Ivoire": [
-    "Société Générale Côte d’Ivoire",
-    "Ecobank Côte d’Ivoire",
-    "Bank of Africa Côte d’Ivoire",
-    "Coris Bank International",
-    "Orange Bank Africa",
-  ],
-  Tanzania: [
-    "CRDB Bank",
-    "NMB Bank",
-    "NBC Tanzania",
-    "Stanbic Bank Tanzania",
-    "Absa Bank Tanzania",
-  ],
-  "Francophone WA": [
-    "Ecobank UEMOA",
-    "Société Générale Côte d'Ivoire",
-    "BOA (Bank of Africa)",
-    "Coris Bank International",
-    "Orange Bank Africa",
-  ],
-};
-
-// ==========================================
-// 7. Interbank Name Resolution Engine (Section 3.2)
-// ==========================================
-const DEMO_DIRECTORIES: Record<string, string[]> = {
-  Nigeria: [
-    "Ada Okafor",
-    "Chinedu Eze",
-    "Zainab Bello",
-    "Babatunde Adeleke",
-    "Fatima Mohammed",
-    "Emeka Okonkwo",
-    "Ngozi Adeleke",
-  ],
-  Kenya: [
-    "David Kamau",
-    "Grace Wanjiku",
-    "Brian Kiprop",
-    "Faith Muthoni",
-    "Kevin Omondi",
-    "Mercy Chebet",
-  ],
-  Ghana: [
-    "Daniel Mensah",
-    "Amara Boateng",
-    "Kwame Asante",
-    "Akosua Addo",
-    "Kofi Osei",
-    "Abena Mensah",
-  ],
-  "South Africa": [
-    "Amara Ndlovu",
-    "Sipho Dlamini",
-    "Lerato Khumalo",
-    "Thabo Mokoena",
-    "Nomvula Sithole",
-  ],
-  Rwanda: [
-    "Jean-Paul Mugisha",
-    "Aline Uwase",
-    "Eric Nshimiyimana",
-    "Diane Uwimana",
-  ],
-  Uganda: [
-    "Patrick Okello",
-    "Brenda Namubiru",
-    "Joseph Mukasa",
-    "Sarah Atuhaire",
-  ],
-  "Côte d’Ivoire": [
-    "Kouadio Yao",
-    "Aminata Koné",
-    "Serge Kouassi",
-    "Mariam Touré",
-  ],
-  Egypt: [
-    "Omar El-Sayed",
-    "Nourhan Hassan",
-    "Karim Mansour",
-    "Salma Ibrahim",
-  ],
-  Tanzania: [
-    "Juma Hassan",
-    "Neema Mwakyusa",
-    "Baraka Mushi",
-    "Asha Bakari",
-  ],
-  default: [
-    "Ibrahim Diallo",
-    "Kofi Mensah",
-    "Amina Yusuf",
-    "Samuel Kibet",
-    "Folashade Balogun",
-    "Tariq Mansoor",
-  ],
-};
-
-/**
- * Simulates real-time interbank NIBSS/GhIPSS/PesaLink name resolution
- */
-export function resolveInterbankAccountName(
-  accountNumber: string,
-  _bankName: string,
-  country: string
-): string {
-  const cleaned = accountNumber.replace(/[^a-zA-Z0-9]/g, "");
-  if (cleaned.length < 8) return "";
-
-  const list = DEMO_DIRECTORIES[country] || DEMO_DIRECTORIES.default;
-  const charSum = cleaned
-    .split("")
-    .reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  const nameIndex = charSum % list.length;
-  return list[nameIndex];
-}
-
-// ==========================================
-// 8. Corporate Funding Source Entities (Section 4)
+// 6. Corporate Funding Source Entities (Section 4)
 // ==========================================
 export interface CorporateFundingSource {
   id: string;

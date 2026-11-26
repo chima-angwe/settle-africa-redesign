@@ -1,13 +1,13 @@
 import type React from "react";
 import { useState, useRef } from "react";
 import { CustomSelect, Icon } from "@/shared/ui";
+import { env } from "@/shared/config";
 import { downloadTransferReceipt } from "@/shared/lib";
 import type { AccountType, Page } from "@/shared/types";
 import type { Transfer } from "@/entities/transfer";
 import { CountryCurrencySelect, CountrySelect, callingCodes } from "@/entities/country";
 import { VerificationGateBanner } from "@/features/manage-profile";
 import {
-  LAUNCH_ROUTE_COUNTRIES,
   PICKUP_ID_TYPES,
 } from "../model/data";
 import {
@@ -16,6 +16,54 @@ import {
 } from "../model/useSendMoneyFlow";
 import { ScheduledPaymentControl } from "./ScheduledPaymentControl";
 import { getScheduleLabel } from "../model/schedule";
+
+interface CombiCheckStatusBannerProps {
+  isChecking: boolean;
+  unsupportedMessage: string | null;
+  errorMessage: string | null;
+  onRetry: () => void;
+}
+
+function CombiCheckStatusBanner({
+  isChecking,
+  unsupportedMessage,
+  errorMessage,
+  onRetry,
+}: CombiCheckStatusBannerProps) {
+  if (isChecking) {
+    return (
+      <p className="text-xs text-muted flex items-center gap-2">
+        <span className="w-3 h-3 rounded-full border border-muted border-t-transparent animate-spin inline-block" />
+        <span>Checking transfer combination and fee...</span>
+      </p>
+    );
+  }
+
+  if (unsupportedMessage) {
+    return (
+      <div className="rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50/70 dark:bg-amber-950/30 px-3.5 py-2.5 text-xs text-amber-800 dark:text-amber-300">
+        {unsupportedMessage}
+      </div>
+    );
+  }
+
+  if (errorMessage) {
+    return (
+      <div className="rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50/70 dark:bg-rose-950/30 px-3.5 py-2.5 flex items-center justify-between gap-3 text-xs text-rose-700 dark:text-rose-300">
+        <span>{errorMessage}</span>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="font-semibold underline hover:opacity-80 shrink-0 cursor-pointer"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  return null;
+}
 
 export interface SendMoneyProps extends UseSendMoneyFlowProps {
   setPage: (page: Page) => void;
@@ -37,7 +85,9 @@ export function SendMoney(props: SendMoneyProps) {
   } = props;
   const flow = useSendMoneyFlow(props);
   const isVerificationBlocked = Boolean(
-    verificationStatus && verificationStatus !== "approved",
+    !env.bypassKycVerification &&
+      verificationStatus &&
+      verificationStatus !== "approved",
   );
 
   const [recipientTab, setRecipientTab] = useState<"saved" | "new">(() =>
@@ -45,7 +95,9 @@ export function SendMoney(props: SendMoneyProps) {
   );
   const [recipientSearch, setRecipientSearch] = useState("");
   const [copiedRef, setCopiedRef] = useState(false);
+  const [copiedPayToAccount, setCopiedPayToAccount] = useState(false);
   const [pin, setPin] = useState("");
+  const [otp, setOtp] = useState("");
   const [pinError, setPinError] = useState("");
   const pinInputRef = useRef<HTMLInputElement>(null);
 
@@ -62,8 +114,15 @@ export function SendMoney(props: SendMoneyProps) {
     setTimeout(() => setCopiedRef(false), 2000);
   };
 
+  const copyPayToAccount = (text: string) => {
+    navigator.clipboard?.writeText(text);
+    setCopiedPayToAccount(true);
+    setTimeout(() => setCopiedPayToAccount(false), 2000);
+  };
+
   const handleReset = () => {
     setPin("");
+    setOtp("");
     setPinError("");
     flow.resetFlow();
   };
@@ -81,7 +140,7 @@ export function SendMoney(props: SendMoneyProps) {
       return;
     }
     setPinError("");
-    flow.confirmTransfer();
+    void flow.confirmTransfer(pin, otp);
   };
 
   const filteredRecipients = recipients.filter((r) =>
@@ -114,6 +173,156 @@ export function SendMoney(props: SendMoneyProps) {
         <div className="text-xs text-muted flex items-center justify-between px-1">
           <span>{flow.sendCurrency} → {flow.targetCurrency}</span>
           <span className="font-mono">{flow.clearingRail.settlementRailProtocol}</span>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // Pending Result View
+  // ==========================================
+  if (flow.step === "pending" && flow.completedTransfer) {
+    const t = flow.completedTransfer;
+
+    return (
+      <div className="max-w-md mx-auto py-10 px-4">
+        <div className="bg-paper border border-line rounded-2xl p-6 sm:p-8 text-center shadow-subtle">
+          <div className="w-12 h-12 bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-900 rounded-full flex items-center justify-center mx-auto mb-5">
+            <Icon name="clock" size={22} />
+          </div>
+
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-100/80 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 text-[11px] font-semibold mb-3">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+            <span>{t.status}</span>
+          </div>
+
+          <h2 className="text-2xl font-heading font-bold text-ink mb-1">
+            {t.status === "Processing" ? "Transaction processing" : "Transaction pending"}
+          </h2>
+          <p className="text-muted text-sm mb-6">
+            {t.payTo ? (
+              <>
+                Send{" "}
+                <strong className="text-ink font-semibold">
+                  {formatAmount(t.amount)} {t.currency}
+                </strong>{" "}
+                to the account below to complete your transfer to{" "}
+                <strong className="text-ink font-semibold">{t.name}</strong>.
+              </>
+            ) : (
+              <>
+                Your{" "}
+                <strong className="text-ink font-semibold">
+                  {formatAmount(t.amount)} {t.currency}
+                </strong>{" "}
+                transfer to <strong className="text-ink font-semibold">{t.name}</strong> is{" "}
+                {t.status.toLowerCase()}.
+              </>
+            )}
+          </p>
+
+          {t.payTo && (
+            <div className="bg-soft border border-line rounded-xl p-4 text-left text-xs space-y-2.5 mb-4">
+              <div className="font-semibold text-ink">Pay to account</div>
+              {t.payTo.bankName && (
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted">Bank</span>
+                  <span className="text-ink font-medium text-right">{t.payTo.bankName}</span>
+                </div>
+              )}
+              {t.payTo.accountNumber && (
+                <div className="flex justify-between items-center gap-3">
+                  <span className="text-muted">Account number</span>
+                  <button
+                    type="button"
+                    className="font-mono text-ink font-semibold flex items-center gap-1.5 hover:underline cursor-pointer"
+                    onClick={() => copyPayToAccount(t.payTo!.accountNumber)}
+                  >
+                    <span>{t.payTo.accountNumber}</span>
+                    <Icon name={copiedPayToAccount ? "check" : "copy"} size={12} />
+                  </button>
+                </div>
+              )}
+              {t.payTo.accountName && (
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted">Account name</span>
+                  <span className="text-ink font-medium text-right">{t.payTo.accountName}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="bg-soft border border-line rounded-xl p-4 text-left text-xs space-y-2.5 mb-6">
+            <div className="flex justify-between">
+              <span className="text-muted">Status</span>
+              <span className="text-amber-600 dark:text-amber-400 font-semibold">{t.status}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted">Date</span>
+              <span className="text-ink font-medium">{t.date}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted">Recipient</span>
+              <span className="text-ink font-semibold">
+                {t.name} · {t.country}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted">Payout</span>
+              <span className="text-ink font-medium text-right">
+                {t.method ? `${t.method} · ${t.provider}` : t.provider}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted">Amount sent</span>
+              <span className="text-ink font-medium">
+                {formatAmount(t.amount)} {t.currency}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted">Recipient gets</span>
+              <span className="text-ink font-semibold">
+                {formatAmount(t.recipientAmount || 0)}{" "}
+                {t.recipientCurrency || t.currency}
+              </span>
+            </div>
+            <div className="flex justify-between pt-2 border-t border-line">
+              <span className="text-muted">Reference</span>
+              <button
+                type="button"
+                className="font-mono text-ink flex items-center gap-1 hover:underline cursor-pointer"
+                onClick={() => copyRef(t.id)}
+              >
+                <span>{t.id}</span>
+                <Icon name={copiedRef ? "check" : "copy"} size={12} />
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <button
+              type="button"
+              disabled={flow.isCheckingStatus}
+              className="button button-primary w-full h-11 text-sm font-medium disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+              onClick={() => void flow.checkPendingStatus()}
+            >
+              {flow.isCheckingStatus ? "Checking status..." : "Check transaction status"}
+            </button>
+            <button
+              type="button"
+              className="button button-secondary w-full h-11 text-sm font-medium cursor-pointer"
+              onClick={() => setPage("Transactions")}
+            >
+              View in transactions
+            </button>
+            <button
+              type="button"
+              className="button button-quiet w-full h-11 text-sm text-muted hover:text-ink cursor-pointer"
+              onClick={handleReset}
+            >
+              Send another payment
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -196,7 +405,7 @@ export function SendMoney(props: SendMoneyProps) {
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted">Fee (1%)</span>
+              <span className="text-muted">Transfer fee</span>
               <span className="text-ink font-medium">
                 {formatAmount(t.feeAmount || 0)} {t.currency}
               </span>
@@ -367,6 +576,19 @@ export function SendMoney(props: SendMoneyProps) {
 
           {/* Main Focus Card */}
           <div className="bg-paper border border-line rounded-2xl p-6 sm:p-8 shadow-subtle space-y-6">
+            {flow.localesError && (
+              <div className="rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50/70 dark:bg-rose-950/30 px-3.5 py-2.5 flex items-center justify-between gap-3 text-xs text-rose-700 dark:text-rose-300">
+                <span>{flow.localesError}</span>
+                <button
+                  type="button"
+                  onClick={() => void flow.refetchLocales()}
+                  className="font-semibold underline hover:opacity-80 shrink-0 cursor-pointer"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+
             {/* ========================================================= */}
             {/* STEP 1: AMOUNT & PAYMENT METHOD                          */}
             {/* ========================================================= */}
@@ -393,7 +615,9 @@ export function SendMoney(props: SendMoneyProps) {
                       <div className="pl-2 border-l border-line shrink-0">
                         <CountryCurrencySelect
                           country={flow.sendCountry}
-                          countries={LAUNCH_ROUTE_COUNTRIES}
+                          countries={flow.supportedCountries}
+                          currencyByCountry={flow.currencyByCountry}
+                          isoByCountry={flow.isoByCountry}
                           onChange={(country, code) => {
                             flow.setSendCountry(country);
                             flow.setSendCurrency(code);
@@ -407,10 +631,25 @@ export function SendMoney(props: SendMoneyProps) {
                   {/* Calm, Single-Line Rate & Fee Breakdown */}
                   <div className="flex items-center justify-between px-2 text-xs text-muted">
                     <span>
-                      Fee: <strong className="text-ink font-medium">1% ({formatAmount(flow.calculation.feeAmount)} {flow.sendCurrency})</strong>
+                      Fee:{" "}
+                      <strong className="text-ink font-medium">
+                        {flow.isCombiChecking
+                          ? "Calculating..."
+                          : flow.hasVerifiedFee
+                            ? `${formatAmount(flow.calculation.feeAmount)} ${flow.sendCurrency || "---"}`
+                            : "---"}
+                      </strong>
                     </span>
                     <span>
-                      {flow.isLocalRoute ? "Local · " : "Cross-border · "}1 {flow.sendCurrency} = <strong className="text-ink font-medium">{formatAmount(flow.calculation.exchangeRate, 4)} {flow.targetCurrency}</strong>
+                      {flow.sendCurrency && flow.targetCurrency ? (
+                        <>
+                          {flow.isLocalRoute ? "Local · " : "Cross-border · "}1 {flow.sendCurrency} = <strong className="text-ink font-medium">{formatAmount(flow.calculation.exchangeRate, 4)} {flow.targetCurrency}</strong>
+                        </>
+                      ) : flow.isLoadingLocales ? (
+                        "Loading live rates..."
+                      ) : (
+                        "Rates unavailable"
+                      )}
                     </span>
                   </div>
 
@@ -426,7 +665,9 @@ export function SendMoney(props: SendMoneyProps) {
                       <div className="pl-2 border-l border-line shrink-0">
                         <CountryCurrencySelect
                           country={flow.targetCountry}
-                          countries={LAUNCH_ROUTE_COUNTRIES}
+                          countries={flow.supportedCountries}
+                          currencyByCountry={flow.currencyByCountry}
+                          isoByCountry={flow.isoByCountry}
                           onChange={(country) => flow.setTargetCountry(country)}
                           ariaLabel="Select receiving country and currency"
                         />
@@ -554,6 +795,14 @@ export function SendMoney(props: SendMoneyProps) {
                   onChange={flow.setSchedule}
                 />
 
+                {/* Combination Check Status */}
+                <CombiCheckStatusBanner
+                  isChecking={flow.isCombiChecking}
+                  unsupportedMessage={flow.combiCheckUnsupportedMessage}
+                  errorMessage={flow.combiCheckError}
+                  onRetry={() => void flow.refetchCombiCheck()}
+                />
+
                 {/* Error Message */}
                 {flow.error && (
                   <p className="text-xs text-rose-600 dark:text-rose-400 font-medium">
@@ -565,11 +814,21 @@ export function SendMoney(props: SendMoneyProps) {
                 <div className="pt-2">
                   <button
                     type="button"
-                    disabled={isVerificationBlocked}
+                    disabled={
+                      isVerificationBlocked ||
+                      flow.isCombiChecking ||
+                      Boolean(flow.combiCheckError) ||
+                      Boolean(flow.combiCheckUnsupportedMessage) ||
+                      (Number(flow.amount) > 0 && !flow.isCombiAllowed)
+                    }
                     className="button button-primary w-full h-12 text-sm font-semibold rounded-xl disabled:opacity-40 disabled:pointer-events-none"
                     onClick={flow.goToTo}
                   >
-                    {isVerificationBlocked ? "Verification required to continue" : "Continue"}
+                    {isVerificationBlocked
+                      ? "Verification required to continue"
+                      : flow.isCombiChecking
+                        ? "Checking combination..."
+                        : "Continue"}
                   </button>
                 </div>
               </div>
@@ -722,12 +981,13 @@ export function SendMoney(props: SendMoneyProps) {
                           Destination country
                         </label>
                         <span className="text-[11px] text-muted">
-                          9 launch routes ({flow.targetCurrency})
+                          {flow.supportedCountries.length} routes ({flow.targetCurrency})
                         </span>
                       </div>
                       <CountrySelect
                         value={flow.targetCountry}
-                        countries={LAUNCH_ROUTE_COUNTRIES}
+                        countries={flow.supportedCountries}
+                        isoByCountry={flow.isoByCountry}
                         onChange={flow.setTargetCountry}
                       />
                       {flow.fieldErrors.country && (
@@ -836,7 +1096,15 @@ export function SendMoney(props: SendMoneyProps) {
                         onChange={flow.setBankName}
                         disabled={flow.availableProviders.length === 0}
                         modalTitle={`Select ${flow.deliverySpec.providerLabel.toLowerCase()}`}
-                        options={flow.availableProviders}
+                        options={
+                          flow.availableMethods.length > 0
+                            ? flow.availableMethods.map((method) => ({
+                                value: method.name,
+                                label: method.name,
+                                badge: method.fees > 0 ? `Fee ${method.fees}` : undefined,
+                              }))
+                            : flow.availableProviders
+                        }
                         hasError={Boolean(flow.fieldErrors.provider)}
                         triggerClassName="h-11 px-3.5 rounded-xl text-sm font-medium"
                       />
@@ -970,6 +1238,12 @@ export function SendMoney(props: SendMoneyProps) {
                               </span>
                             </p>
                           )}
+
+                          {!flow.isResolvingName && flow.accountLookupError && (
+                            <p className="text-xs text-rose-600 dark:text-rose-400 mt-2">
+                              {flow.accountLookupError}
+                            </p>
+                          )}
                         </div>
 
                         {flow.deliverySpec.requiresRoutingCode && (
@@ -1035,6 +1309,86 @@ export function SendMoney(props: SendMoneyProps) {
                   </div>
                 )}
 
+                {(recipientTab === "new" || Boolean(flow.selectedBeneficiaryId)) &&
+                  flow.deliveryAvailability.supported && (
+                    <div className="pt-3 border-t border-line/70 space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs font-medium text-muted block mb-1.5">
+                            Recipient type
+                          </label>
+                          <CustomSelect
+                            value={flow.recipientCategory}
+                            onChange={(val) =>
+                              flow.setRecipientCategory(
+                                val === "business" ? "business" : "individual",
+                              )
+                            }
+                            modalTitle="Select recipient type"
+                            triggerClassName="h-11 px-3.5 rounded-xl text-sm font-medium"
+                            options={[
+                              { value: "individual", label: "Individual" },
+                              { value: "business", label: "Business" },
+                            ]}
+                          />
+                        </div>
+                        {flow.payoutMethod !== "cash" && (
+                          <div>
+                            <label className="text-xs font-medium text-muted block mb-1.5">
+                              Recipient phone (optional)
+                            </label>
+                            <input
+                              type="tel"
+                              inputMode="tel"
+                              placeholder="e.g. +254 712 345 678"
+                              value={flow.recipientPhone}
+                              onChange={(e) =>
+                                flow.setRecipientPhone(
+                                  e.target.value.replace(/[^0-9+ -]/g, ""),
+                                )
+                              }
+                              className="w-full h-11 px-3.5 border border-line rounded-xl bg-paper text-ink font-mono text-sm outline-none focus:border-ink"
+                            />
+                          </div>
+                        )}
+                        <div>
+                          <label className="text-xs font-medium text-muted block mb-1.5">
+                            Recipient email (optional)
+                          </label>
+                          <input
+                            type="email"
+                            placeholder="recipient@example.com"
+                            value={flow.recipientEmail}
+                            onChange={(e) => flow.setRecipientEmail(e.target.value)}
+                            className="w-full h-11 px-3.5 border border-line rounded-xl bg-paper text-ink text-sm outline-none focus:border-ink"
+                          />
+                        </div>
+                        <div className={flow.payoutMethod === "cash" ? "" : "sm:col-span-2"}>
+                          <label className="text-xs font-medium text-muted block mb-1.5">
+                            Recipient address (optional)
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Street address and city"
+                            value={flow.recipientAddress}
+                            onChange={(e) =>
+                              flow.setRecipientAddress(e.target.value)
+                            }
+                            className="w-full h-11 px-3.5 border border-line rounded-xl bg-paper text-ink text-sm outline-none focus:border-ink"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                {/* Combination Check Status */}
+                <CombiCheckStatusBanner
+                  isChecking={flow.isCombiChecking}
+                  unsupportedMessage={flow.combiCheckUnsupportedMessage}
+                  errorMessage={flow.combiCheckError}
+                  onRetry={() => void flow.refetchCombiCheck()}
+                />
+
                 {/* Error Notice */}
                 {flow.error && (
                   <p className="text-xs text-rose-600 dark:text-rose-400 font-medium">
@@ -1053,10 +1407,11 @@ export function SendMoney(props: SendMoneyProps) {
                   </button>
                   <button
                     type="button"
-                    className="button button-primary h-11 px-6 text-sm font-semibold rounded-xl"
+                    disabled={flow.isCombiChecking || !flow.isCombiAllowed}
+                    className="button button-primary h-11 px-6 text-sm font-semibold rounded-xl disabled:opacity-40 disabled:pointer-events-none"
                     onClick={flow.goToReview}
                   >
-                    Continue to review
+                    {flow.isCombiChecking ? "Checking combination..." : "Continue to review"}
                   </button>
                 </div>
               </div>
@@ -1131,9 +1486,13 @@ export function SendMoney(props: SendMoneyProps) {
                     </span>
                   </div>
                   <div className="flex justify-between py-2.5">
-                    <span className="text-muted">Transfer fee (1%)</span>
+                    <span className="text-muted">Transfer fee</span>
                     <span className="text-ink font-medium">
-                      {formatAmount(flow.calculation.feeAmount)} {flow.sendCurrency}
+                      {flow.isCombiChecking
+                        ? "Calculating..."
+                        : flow.hasVerifiedFee
+                          ? `${formatAmount(flow.calculation.feeAmount)} ${flow.sendCurrency}`
+                          : "---"}
                     </span>
                   </div>
                   {getScheduleLabel(flow.schedule) && (
@@ -1152,18 +1511,36 @@ export function SendMoney(props: SendMoneyProps) {
                   </div>
                 </div>
 
-                {/* Reference Section */}
-                <div>
-                  <label className="text-[11px] font-medium text-muted block mb-1">
-                    Reference
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Add a note or reference"
-                    value={flow.description}
-                    onChange={(e) => flow.setDescription(e.target.value)}
-                    className="w-full h-10 px-3.5 border border-line rounded-xl bg-paper text-ink text-xs outline-none focus:border-ink"
-                  />
+                {/* Reference & Optional OTP Section */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-medium text-muted block mb-1">
+                      Reference
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Add a note or reference"
+                      value={flow.description}
+                      onChange={(e) => flow.setDescription(e.target.value)}
+                      className="w-full h-10 px-3.5 border border-line rounded-xl bg-paper text-ink text-xs outline-none focus:border-ink"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-medium text-muted block mb-1">
+                      OTP code (if required)
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      placeholder="Optional 6-digit OTP"
+                      value={otp}
+                      onChange={(e) =>
+                        setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
+                      }
+                      className="w-full h-10 px-3.5 border border-line rounded-xl bg-paper text-ink font-mono text-xs outline-none focus:border-ink"
+                    />
+                  </div>
                 </div>
 
                 {/* Security PIN Section (Under Reference, not inside an input, big asterisks like ****) */}
@@ -1290,7 +1667,12 @@ export function SendMoney(props: SendMoneyProps) {
                   </button>
                   <button
                     type="button"
-                    disabled={flow.isSubmitting || isVerificationBlocked}
+                    disabled={
+                      flow.isSubmitting ||
+                      isVerificationBlocked ||
+                      flow.isCombiChecking ||
+                      !flow.isCombiAllowed
+                    }
                     className="button button-primary h-12 px-6 text-sm font-semibold rounded-xl disabled:opacity-40 disabled:pointer-events-none"
                     onClick={handleConfirmTransfer}
                   >
