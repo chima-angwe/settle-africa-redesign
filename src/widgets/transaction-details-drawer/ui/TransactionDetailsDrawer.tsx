@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Icon } from "@/shared/ui";
+import { useEffect } from "react";
+import { Icon, toast } from "@/shared/ui";
 import { downloadTransferReceipt } from "@/shared/lib";
 import { TransferStatusBadge, type Transfer } from "@/entities/transfer";
 import { CountryBadge } from "@/entities/country";
@@ -19,7 +19,6 @@ export function TransactionDetailsDrawer({
   onCancelTransfer,
   onRetryTransfer,
 }: TransactionDetailsDrawerProps) {
-  const [notice, setNotice] = useState("");
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -130,9 +129,9 @@ export function TransactionDetailsDrawer({
   const copyReference = async () => {
     try {
       await navigator.clipboard.writeText(transfer.id);
-      setNotice("Reference copied.");
+      toast.success("Reference copied.");
     } catch {
-      setNotice(`Reference: ${transfer.id}`);
+      toast.info(`Reference: ${transfer.id}`);
     }
   };
 
@@ -330,13 +329,6 @@ export function TransactionDetailsDrawer({
               <code>{transfer.batchId}</code>
             </section>
           )}
-          {notice && (
-            <div className="notice success-notice details-notice">
-              <Icon name="check" size={15} />
-              {notice}
-            </div>
-          )}
-
           {(isFailed || isCancelled) && onRetryTransfer && (
             <button
               type="button"
@@ -353,7 +345,7 @@ export function TransactionDetailsDrawer({
               className="button button-secondary w-full cursor-pointer"
               onClick={() => {
                 onCancelTransfer(transfer);
-                setNotice("Transfer cancelled.");
+                toast.success("Transfer cancelled.");
               }}
             >
               Cancel transfer
@@ -367,7 +359,7 @@ export function TransactionDetailsDrawer({
               if (onContactSupport) {
                 onContactSupport(transfer);
               } else {
-                setNotice("Issue report logged.");
+                toast.success("Issue report logged.");
               }
             }}
           >
@@ -388,7 +380,7 @@ export function TransactionDetailsDrawer({
               className="button button-primary cursor-pointer"
               onClick={() => {
                 downloadTransferReceipt(transfer);
-                setNotice("Receipt downloaded.");
+                toast.success("Receipt downloaded.");
               }}
             >
               <Icon name="download" size={15} /> Download receipt

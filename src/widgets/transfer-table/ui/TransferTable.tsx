@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Icon } from "@/shared/ui";
+import { CustomSelect, Icon } from "@/shared/ui";
 import { TransferStatusBadge, type Transfer } from "@/entities/transfer";
 import { CountryBadge } from "@/entities/country";
 
@@ -180,24 +180,24 @@ export function TransferTable({
               <strong className="text-ink font-semibold">{transfers.length}</strong> transactions
             </span>
             {pageSizeOptions.length > 1 && (
-              <label className="flex items-center gap-1.5 text-[8px]">
+              <div className="flex items-center gap-1.5 text-[8px]">
                 <span className="text-muted">Rows:</span>
-                <select
-                  value={rowsPerPage}
-                  onChange={(e) => {
-                    setRowsPerPage(Number(e.target.value));
+                <CustomSelect
+                  value={String(rowsPerPage)}
+                  onChange={(value) => {
+                    setRowsPerPage(Number(value));
                     handlePageChange(1);
                   }}
-                  className="h-[26px] px-2 border border-line bg-soft text-ink text-[8px] font-semibold rounded outline-none cursor-pointer hover:border-ink transition-colors"
-                  aria-label="Rows per page"
-                >
-                  {pageSizeOptions.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  ariaLabel="Rows per page"
+                  modalTitle="Rows per page"
+                  searchable={false}
+                  options={pageSizeOptions.map((opt) => ({
+                    value: String(opt),
+                    label: String(opt),
+                  }))}
+                  triggerClassName="h-[26px] px-2 rounded bg-soft text-[9px] font-semibold"
+                />
+              </div>
             )}
           </div>
 

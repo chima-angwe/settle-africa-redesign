@@ -2698,6 +2698,38 @@
   }
 }
 
+@keyframes toast-in {
+  from {
+    transform: translateY(-8px) translateX(12px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0) translateX(0);
+    opacity: 1;
+  }
+}
+
+.toast-item {
+  animation: toast-in .18s ease-out;
+}
+
+@keyframes select-dropdown-in {
+  from {
+    transform: translateY(-4px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.select-dropdown-card {
+  animation: select-dropdown-in .14s ease-out;
+}
+
 @media (max-width: 1050px) {
   .page-content {
     padding-right: 26px;
@@ -4373,6 +4405,14 @@ body:has(.auth-page)::-webkit-scrollbar {
   background: var(--soft);
 }
 
+.signup-progress.signup-progress-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.signup-progress.signup-progress-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .signup-progress>div {
   display: flex;
   align-items: center;
@@ -4757,6 +4797,10 @@ body:has(.auth-page)::-webkit-scrollbar {
   .auth-field-row {
     grid-template-columns: 1fr;
     gap: 12px;
+  }
+
+  .signup-progress.signup-progress-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .signup-progress>div {

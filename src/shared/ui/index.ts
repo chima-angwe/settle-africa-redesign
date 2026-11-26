@@ -3,4 +3,6 @@ export * from "./logo";
 export * from "./page-heading";
 export * from "./stat-card";
 export * from "./quick-action";
+export * from "./toast";
+export * from "./select";
 

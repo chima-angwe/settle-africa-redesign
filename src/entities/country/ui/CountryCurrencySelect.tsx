@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Icon } from "@/shared/ui";
+import { useMemo, useRef, useState } from "react";
+import { Icon, SelectDropdown } from "@/shared/ui";
 import {
   countries as allCountries,
   countryCurrencies,
@@ -27,8 +27,7 @@ export function CountryCurrencySelect({
   countries: allowedCountries,
 }: CountryCurrencySelectProps) {
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const root = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   const availableCountries = useMemo(
     () => (allowedCountries && allowedCountries.length > 0 ? allowedCountries : allCountries),
@@ -46,40 +45,25 @@ export function CountryCurrencySelect({
   const selectedCurrency = countryCurrencies[selectedCountry] || "NGN";
   const selectedFlag = countryFlag(selectedCountry);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return orderedCountries;
-    return orderedCountries.filter((item) => {
-      const code = (countryCurrencies[item] || "").toLowerCase();
-      return item.toLowerCase().includes(q) || code.includes(q);
-    });
-  }, [orderedCountries, query]);
-
-  useEffect(() => {
-    if (!open) return;
-    const handlePointerDown = (event: MouseEvent) => {
-      if (!root.current?.contains(event.target as Node)) {
-        setOpen(false);
-        setQuery("");
-      }
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpen(false);
-        setQuery("");
-      }
-    };
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
+  const options = useMemo(
+    () =>
+      orderedCountries.map((item) => {
+        const code = countryCurrencies[item] || "NGN";
+        return {
+          value: item,
+          label: item,
+          badge: code,
+          searchText: `${item} ${code}`,
+          icon: <CountryFlag code={countryFlag(item)} country={item} />,
+        };
+      }),
+    [orderedCountries],
+  );
 
   return (
-    <div className={`relative ${className}`} ref={root}>
+    <div className={`relative ${className}`}>
       <button
+        ref={triggerRef}
         type="button"
         aria-label={ariaLabel}
         aria-expanded={open}
@@ -96,66 +80,23 @@ export function CountryCurrencySelect({
         />
       </button>
 
-      {open && (
-        <div
-          className={`absolute z-50 top-[calc(100%+8px)] ${
-            align === "left" ? "left-0" : "right-0"
-          } w-[270px] sm:w-[290px] max-h-[300px] overflow-hidden flex flex-col border border-line rounded-xl bg-paper shadow-card dark:shadow-card-dark text-ink`}
-        >
-          <div className="flex items-center gap-2 px-3 py-2 border-b border-line bg-soft">
-            <Icon name="search" size={14} className="text-muted shrink-0" />
-            <input
-              autoFocus
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search African country or code..."
-              className="w-full bg-transparent border-0 outline-none text-ink text-xs placeholder:text-subtle"
-            />
-          </div>
-
-          <div
-            className="flex-1 overflow-y-auto p-1 divide-y divide-line/40"
-            role="listbox"
-            aria-label={ariaLabel}
-          >
-            {filtered.map((item) => {
-              const code = countryCurrencies[item] || "NGN";
-              const isSelected = item === selectedCountry;
-              return (
-                <button
-                  key={item}
-                  type="button"
-                  role="option"
-                  aria-selected={isSelected}
-                  onClick={() => {
-                    onChange(item, code);
-                    setOpen(false);
-                    setQuery("");
-                  }}
-                  className={`flex w-full items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-xs hover:bg-soft transition-colors cursor-pointer ${
-                    isSelected ? "bg-soft font-semibold text-ink" : "text-ink"
-                  }`}
-                >
-                  <CountryFlag code={countryFlag(item)} country={item} />
-                  <span className="flex-1 truncate">{item}</span>
-                  <span className="font-mono text-[11px] text-muted shrink-0">
-                    {code}
-                  </span>
-                  {isSelected && (
-                    <Icon name="check" size={14} className="text-ink shrink-0" />
-                  )}
-                </button>
-              );
-            })}
-            {filtered.length === 0 && (
-              <div className="p-4 text-center text-muted text-xs">
-                No matching African countries.
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <SelectDropdown
+        open={open}
+        onClose={() => setOpen(false)}
+        anchorRef={triggerRef}
+        ariaLabel={ariaLabel}
+        options={options}
+        value={selectedCountry}
+        onSelect={(nextCountry) => {
+          const code = countryCurrencies[nextCountry] || "NGN";
+          onChange(nextCountry, code);
+        }}
+        searchable
+        searchPlaceholder="Search African country or code..."
+        emptyMessage="No matching African countries."
+        align={align}
+        minWidth={270}
+      />
     </div>
   );
 }
-

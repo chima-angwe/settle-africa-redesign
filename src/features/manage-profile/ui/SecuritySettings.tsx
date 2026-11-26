@@ -1,6 +1,6 @@
 import type React from 'react';
 import { useState } from 'react';
-import { Icon } from '@/shared/ui';
+import { Icon, toast } from '@/shared/ui';
 
 export interface SecuritySettingsProps {
   onSaved: (notice: string) => void;
@@ -13,20 +13,18 @@ export function SecuritySettings({ onSaved }: { onSaved: (notice: string) => voi
   const [twoStep, setTwoStep] = useState(
     () => localStorage.getItem("settle-demo-two-step") === "true",
   );
-  const [error, setError] = useState("");
   const savePassword = (event: React.FormEvent) => {
     event.preventDefault();
-    setError("");
     if (!current || !next || !confirm) {
-      setError("Complete all password fields.");
+      toast.error("Complete all password fields.");
       return;
     }
     if (next.length < 8) {
-      setError("Use at least 8 characters.");
+      toast.error("Use at least 8 characters.");
       return;
     }
     if (next !== confirm) {
-      setError("Passwords do not match.");
+      toast.error("Passwords do not match.");
       return;
     }
     setCurrent("");
@@ -93,7 +91,6 @@ export function SecuritySettings({ onSaved }: { onSaved: (notice: string) => voi
             autoComplete="new-password"
           />
         </label>
-        {error && <div className="notice error-notice">{error}</div>}
         <button className="button button-primary cursor-pointer" type="submit">
           Update password
         </button>

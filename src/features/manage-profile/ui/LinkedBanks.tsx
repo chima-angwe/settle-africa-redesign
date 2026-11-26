@@ -1,6 +1,6 @@
 import type React from "react";
 import { useState } from "react";
-import { Icon, PageHeading } from "@/shared/ui";
+import { CustomSelect, Icon, PageHeading, toast } from "@/shared/ui";
 import {
   COUNTRY_CURRENCY_MAP,
   formatCurrencyValue,
@@ -64,7 +64,6 @@ export function LinkedBanks({ country, onNotice }: LinkedBanksProps) {
 
   const [bank, setBank] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
 
   const persistLinked = (items: LinkedAccountItem[]) => {
     setLinked(items);
@@ -93,9 +92,8 @@ export function LinkedBanks({ country, onNotice }: LinkedBanksProps) {
     persistLinked(next);
     setBank("");
     setAccountNumber("");
-    setSuccessMessage(`${bank} linked.`);
+    toast.success(`${bank} linked.`);
     onNotice("Bank account linked.");
-    setTimeout(() => setSuccessMessage(""), 3500);
   };
 
   const makeDefault = (id: string) => {
@@ -217,19 +215,14 @@ export function LinkedBanks({ country, onNotice }: LinkedBanksProps) {
               <label className="text-xs font-medium text-muted block mb-1.5">
                 Bank name
               </label>
-              <select
-                required
+              <CustomSelect
                 value={bank}
-                onChange={(e) => setBank(e.target.value)}
-                className="w-full h-11 pl-3.5 pr-10 border border-line rounded-xl bg-paper text-ink text-sm outline-none focus:border-ink font-medium cursor-pointer"
-              >
-                <option value="">Select your bank</option>
-                {availableBanks.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
+                onChange={setBank}
+                placeholder="Select your bank"
+                modalTitle="Select your bank"
+                options={availableBanks}
+                triggerClassName="h-11 px-3.5 rounded-xl text-sm font-medium"
+              />
             </div>
 
             <div>
@@ -249,12 +242,6 @@ export function LinkedBanks({ country, onNotice }: LinkedBanksProps) {
                 className="w-full h-11 px-3.5 border border-line rounded-xl bg-paper text-ink font-mono text-sm outline-none focus:border-ink"
               />
             </div>
-
-            {successMessage && (
-              <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-                {successMessage}
-              </p>
-            )}
 
             <div className="pt-1">
               <button

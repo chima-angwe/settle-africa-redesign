@@ -1,6 +1,6 @@
 import type React from "react";
 import { useState } from "react";
-import { Icon, PageHeading } from "@/shared/ui";
+import { CustomSelect, Icon, PageHeading, toast } from "@/shared/ui";
 import type { Recipient } from "@/entities/recipient";
 import { CountryBadge, CountrySelect } from "@/entities/country";
 
@@ -32,7 +32,6 @@ export function Recipients({
   const [country, setCountry] = useState("Nigeria");
   const [account, setAccount] = useState("");
   const [method, setMethod] = useState("Bank transfer");
-  const [notice, setNotice] = useState("");
 
   const filtered = recipients.filter((item) =>
     `${item.name} ${item.country} ${item.method} ${item.account}`
@@ -66,8 +65,7 @@ export function Recipients({
     const removedName = recipientToRemove.name;
     setRecipients(recipients.filter((item) => item.id !== recipientToRemove.id));
     setRecipientToRemove(null);
-    setNotice(`${removedName} removed.`);
-    setTimeout(() => setNotice(""), 3000);
+    toast.success(`${removedName} removed.`);
   };
 
   const saveRecipient = (event: React.FormEvent) => {
@@ -94,13 +92,12 @@ export function Recipients({
           )
         : [...recipients, nextRecipient],
     );
-    setNotice(
+    toast.success(
       editingRecipient
         ? `${recipientName.trim()} updated.`
         : `${recipientName.trim()} added.`,
     );
     closeRecipientModal();
-    setTimeout(() => setNotice(""), 3000);
   };
 
   return (
@@ -121,13 +118,6 @@ export function Recipients({
           </button>
         }
       />
-
-      {notice && (
-        <div className="notice success-notice rounded-xl px-4 py-2.5 text-xs flex items-center gap-2">
-          <Icon name="check" size={15} />
-          <span>{notice}</span>
-        </div>
-      )}
 
       {/* Clean Search Bar */}
       <div className="flex items-center justify-between gap-3">
@@ -287,16 +277,13 @@ export function Recipients({
                 <label className="text-xs font-medium text-muted block">
                   Receiving method
                 </label>
-                <select
+                <CustomSelect
                   value={method}
-                  onChange={(e) => setMethod(e.target.value)}
-                  className="w-full h-11 pl-3.5 pr-10 border border-line rounded-xl bg-paper text-ink text-sm outline-none focus:border-ink font-medium cursor-pointer"
-                >
-                  <option>Bank transfer</option>
-                  <option>Mobile money</option>
-                  <option>M-Pesa</option>
-                  <option>Cash pickup</option>
-                </select>
+                  onChange={setMethod}
+                  modalTitle="Select receiving method"
+                  options={["Bank transfer", "Mobile money", "M-Pesa", "Cash pickup"]}
+                  triggerClassName="h-11 px-3.5 rounded-xl text-sm font-medium"
+                />
               </div>
 
               <div className="space-y-1.5">

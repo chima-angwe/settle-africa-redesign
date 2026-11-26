@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { Page, AccountType, Theme } from "@/shared/types";
 import {
+  registerUnauthorizedHandler,
+  resetUnauthorizedState,
+} from "@/shared/api";
+import {
   clearSession,
+  clearSessionAuthCookies,
   getSession,
   isSessionExpired,
   refreshSession,
@@ -103,6 +109,7 @@ function readStoredAccountData(): {
 }
 
 export function App() {
+  const queryClient = useQueryClient();
   const [page, setPage] = useState<Page>("Dashboard");
   const [accountType, setAccountType] = useState<AccountType>(() => {
     const directKey = localStorage.getItem(STORAGE_KEYS.ACCOUNT_TYPE);
@@ -271,13 +278,18 @@ export function App() {
 
   const lastActivityRefreshRef = useRef(0);
 
-  const expireSession = useCallback((message: string) => {
-    clearSession();
-    setSignedIn(false);
-    setAuthMode("signin");
-    setSessionNotice(message);
-    setActiveTransfer(null);
-  }, []);
+  const expireSession = useCallback(
+    (message: string) => {
+      clearSession();
+      clearSessionAuthCookies();
+      queryClient.clear();
+      setSignedIn(false);
+      setAuthMode("signin");
+      setSessionNotice(message);
+      setActiveTransfer(null);
+    },
+    [queryClient],
+  );
 
   const ensureActiveSession = useCallback(() => {
     if (isSessionExpired()) {
@@ -290,6 +302,10 @@ export function App() {
 
   useEffect(() => {
     if (!signedIn) return;
+    resetUnauthorizedState();
+    const unregisterUnauthorized = registerUnauthorizedHandler(() => {
+      expireSession("Your session has expired. Please sign in again.");
+    });
     if (!getSession()) {
       startSession();
     }
@@ -319,6 +335,7 @@ export function App() {
     document.addEventListener("visibilitychange", checkExpiry);
 
     return () => {
+      unregisterUnauthorized();
       window.clearInterval(interval);
       window.removeEventListener("pointerdown", handleActivity);
       window.removeEventListener("keydown", handleActivity);
@@ -348,6 +365,9 @@ export function App() {
 
   const handleLogout = () => {
     clearSession();
+    clearSessionAuthCookies();
+    resetUnauthorizedState();
+    queryClient.clear();
     setSessionNotice("");
     setSignedIn(false);
     setAuthMode("signin");
@@ -443,6 +463,8 @@ export function App() {
           address,
           occupation,
           businessCategory,
+          vault,
+          registrationCode,
         }) => {
           setAccountType(selectedType);
           localStorage.setItem("settle-demo-account-type", selectedType);
@@ -483,6 +505,15 @@ export function App() {
               "settle-demo-business-category",
               businessCategory,
             );
+          if (vault) {
+            localStorage.setItem(`settle-demo-${selectedType}-vault`, vault);
+          }
+          if (registrationCode) {
+            localStorage.setItem(
+              `settle-demo-${selectedType}-reg-code`,
+              registrationCode,
+            );
+          }
           if (authMode === "signup") {
             setAuthMode("signin");
             setSignedIn(false);
@@ -626,7 +657,6 @@ export function App() {
           )}
           {page === "Transactions" && (
             <TransactionsPage
-              transfers={transfers}
               query={query}
               setQuery={setQuery}
               onSelectTransfer={setActiveTransfer}

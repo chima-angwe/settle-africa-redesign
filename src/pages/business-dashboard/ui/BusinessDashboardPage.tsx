@@ -1,10 +1,14 @@
 import { useState, useEffect } from "react";
 import { StatCard, QuickAction } from "@/shared/ui";
+import { getErrorMessage } from "@/shared/api";
+import {
+  formatDashboardCurrency,
+  useDashboardCentral,
+} from "@/features/dashboard";
 import { RateMarquee } from "@/widgets/rate-marquee";
 import { TransferTable } from "@/widgets/transfer-table";
 import {
   DashboardErrorState,
-  DashboardListSkeleton,
   DashboardStatsSkeleton,
 } from "@/widgets/dashboard-overview";
 import {
@@ -32,14 +36,14 @@ export function BusinessDashboardPage({
   setPage,
   onSelectTransfer,
 }: BusinessDashboardPageProps) {
+  const {
+    data: centralData,
+    isLoading: isCentralLoading,
+    isError: isCentralError,
+    error: centralError,
+    refetch: refetchCentral,
+  } = useDashboardCentral();
   const [approved, setApproved] = useState<string[]>(() => loadApprovedIds());
-  const [isLoading, setIsLoading] = useState(true);
-  const [localError, setLocalError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setIsLoading(false), 180);
-    return () => window.clearTimeout(timer);
-  }, []);
 
   useEffect(() => {
     const sync = () => setApproved(loadApprovedIds());
@@ -47,28 +51,16 @@ export function BusinessDashboardPage({
     return () => window.removeEventListener("settle-approvals-updated", sync);
   }, []);
 
-  const activeError = loadError || localError;
+  const activeError =
+    loadError ||
+    (isCentralError
+      ? getErrorMessage(centralError, "Unable to load dashboard summary.")
+      : null);
 
   const handleRetry = () => {
-    setLocalError(null);
-    setIsLoading(true);
     onRetryLoad?.();
-    window.setTimeout(() => setIsLoading(false), 180);
+    void refetchCentral();
   };
-
-  const totalUsd = transfers.reduce(
-    (sum, item) =>
-      sum +
-      (item.usdAmount ??
-        (item.currency === "GBP"
-          ? item.amount * 1.27
-          : item.currency === "EUR"
-            ? item.amount * 1.08
-            : item.currency === "NGN"
-              ? item.amount / 1550
-              : item.amount)),
-    0,
-  );
 
   const pendingApprovals = BUSINESS_APPROVAL_REQUESTS.filter(
     (item) => !approved.includes(item.id),
@@ -80,6 +72,13 @@ export function BusinessDashboardPage({
       item.status === "Failed",
   ).length;
   const pendingActionsCount = pendingApprovals + pendingTransfers;
+
+  const limitDisplay = centralData
+    ? formatDashboardCurrency(centralData.limit, centralData.countryId, 0)
+    : "—";
+  const sentThisWeekDisplay = centralData
+    ? formatDashboardCurrency(centralData.thisWeek, centralData.countryId, 2)
+    : "—";
 
   return (
     <>
@@ -93,18 +92,18 @@ export function BusinessDashboardPage({
         <DashboardErrorState message={activeError} onRetry={handleRetry} />
       )}
 
-      {isLoading ? (
+      {isCentralLoading ? (
         <DashboardStatsSkeleton />
       ) : (
         <div className="stat-grid business-stat-grid grid grid-cols-2 lg:grid-cols-4 gap-0 border border-line bg-paper rounded-2xl overflow-hidden">
           <StatCard
-            label="Monthly transfer limit"
-            value="₦25,000,000"
+            label="Transfer limit"
+            value={limitDisplay}
             icon="card"
           />
           <StatCard
-            label="Sent this month"
-            value={`$${totalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            label="Sent this week"
+            value={sentThisWeekDisplay}
             icon="send"
           />
           <StatCard
@@ -158,25 +157,21 @@ export function BusinessDashboardPage({
             View all <span>→</span>
           </button>
         </div>
-        {isLoading ? (
-          <DashboardListSkeleton rows={3} />
-        ) : (
-          <TransferTable
-            transfers={transfers.slice(0, 3)}
-            onSelect={onSelectTransfer}
-            emptyTitle="No business payments yet"
-            emptySubtitle="Create a new payment or bulk batch to track settlements here."
-            emptyAction={
-              <button
-                type="button"
-                className="button button-primary button-small px-4 py-2 text-xs font-semibold rounded-xl cursor-pointer"
-                onClick={() => setPage("Send money")}
-              >
-                New payment
-              </button>
-            }
-          />
-        )}
+        <TransferTable
+          transfers={transfers.slice(0, 3)}
+          onSelect={onSelectTransfer}
+          emptyTitle="No business payments yet"
+          emptySubtitle="Create a new payment or bulk batch to track settlements here."
+          emptyAction={
+            <button
+              type="button"
+              className="button button-primary button-small px-4 py-2 text-xs font-semibold rounded-xl cursor-pointer"
+              onClick={() => setPage("Send money")}
+            >
+              New payment
+            </button>
+          }
+        />
       </section>
     </>
   );
