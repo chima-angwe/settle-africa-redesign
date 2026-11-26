@@ -1,6 +1,6 @@
 import type React from "react";
 import { useState } from "react";
-import { Icon } from "@/shared/ui";
+import { CustomSelect, Icon, toast } from "@/shared/ui";
 import type { Transfer } from "@/entities/transfer";
 
 const SUPPORT_TICKETS_KEY = "settle-demo-support-tickets";
@@ -51,7 +51,6 @@ export function HelpSupport({
   const [transferRef, setTransferRef] = useState(initialTransferRef);
   const [prevInitialTransferRef, setPrevInitialTransferRef] = useState(initialTransferRef);
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
   const [tickets, setTickets] = useState<SupportTicket[]>(() => loadTickets());
 
   if (prevInitialTransferRef !== initialTransferRef) {
@@ -59,7 +58,6 @@ export function HelpSupport({
     if (initialTransferRef) {
       setTransferRef(initialTransferRef);
       setTopic("Transfer question");
-      setError("");
     }
   }
 
@@ -71,10 +69,9 @@ export function HelpSupport({
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
-    setError("");
     const cleanMessage = message.trim();
     if (cleanMessage.length < 5) {
-      setError("Describe your issue in at least 5 characters.");
+      toast.error("Describe your issue in at least 5 characters.");
       return;
     }
 
@@ -144,14 +141,13 @@ export function HelpSupport({
       <form className="settings-form" onSubmit={submit} noValidate>
         <label>
           Topic
-          <select
+          <CustomSelect
             value={topic}
-            onChange={(event) => setTopic(event.target.value)}
-          >
-            <option>Transfer question</option>
-            <option>Account help</option>
-            <option>Something else</option>
-          </select>
+            onChange={setTopic}
+            modalTitle="Select support topic"
+            triggerClassName="h-[38px] px-2.5 rounded-[2px] text-[11px] font-medium"
+            options={["Transfer question", "Account help", "Something else"]}
+          />
         </label>
 
         <label>
@@ -193,7 +189,6 @@ export function HelpSupport({
             value={message}
             onChange={(event) => {
               setMessage(event.target.value);
-              if (error) setError("");
             }}
             rows={4}
             placeholder={
@@ -203,12 +198,6 @@ export function HelpSupport({
             }
           />
         </label>
-
-        {error && (
-          <div className="notice error-notice" role="alert">
-            {error}
-          </div>
-        )}
 
         <button className="button button-primary cursor-pointer" type="submit">
           Send request <span>→</span>

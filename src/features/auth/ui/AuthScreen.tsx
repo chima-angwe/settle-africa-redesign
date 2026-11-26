@@ -1,17 +1,46 @@
-import { useState } from "react";
-import { Icon, LogoMark } from "@/shared/ui";
+import { useEffect, useRef, useState } from "react";
+import { CustomSelect, Icon, LogoMark, toast } from "@/shared/ui";
+import { getErrorMessage, isApiError } from "@/shared/api";
 import { CountrySelect, callingCodes } from "@/entities/country";
 import {
   findAccountByEmail,
-  findAccountByIdentifier,
   getAccountsForType,
   hasDuplicateAccount,
   isValidEmail,
   isValidPhone,
-  saveStoredAccount,
+  setAuthCookies,
   updateStoredPassword,
 } from "@/shared/lib";
 import type { AccountType, Theme } from "@/shared/types";
+import {
+  mapLoginInputToRequest,
+  mapRegisterBusinessInputToRequest,
+  mapRegisterIndividualInputToRequest,
+} from "../api/auth.mapper";
+import {
+  BUSINESS_MEANS_OF_ID_OPTIONS,
+  MEANS_OF_ID_OPTIONS,
+} from "../api/auth.types";
+import { useLogin } from "../hooks/useLogin";
+import { useRegisterBusiness } from "../hooks/useRegisterBusiness";
+import { useRegisterIndividual } from "../hooks/useRegisterIndividual";
+
+const MAX_ID_FILE_BYTES = 5 * 1024 * 1024;
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+      } else {
+        reject(new Error("Could not read selected ID file."));
+      }
+    };
+    reader.onerror = () => reject(new Error("Could not read selected ID file."));
+    reader.readAsDataURL(file);
+  });
+}
 
 export interface AuthCompleteData {
   accountType: AccountType;
@@ -24,6 +53,8 @@ export interface AuthCompleteData {
   address: string;
   occupation: string;
   businessCategory: string;
+  vault?: string;
+  registrationCode?: string;
 }
 
 export interface AuthScreenProps {
@@ -39,7 +70,7 @@ export interface AuthScreenProps {
   onComplete: (account: AuthCompleteData) => void;
 }
 
-const SIGNUP_STEPS = ["Contact", "Verify", "Profile"] as const;
+const SIGNUP_STEPS = ["Contact", "Profile", "Security"] as const;
 
 export function AuthScreen({
   mode,
@@ -59,57 +90,119 @@ export function AuthScreen({
   const [phone, setPhone] = useState("");
   const [stage, setStage] = useState(1);
   const [forgotStage, setForgotStage] = useState<1 | 2>(1);
-  const [otp, setOtp] = useState("");
   const [resetOtp, setResetOtp] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [address, setAddress] = useState("");
   const [occupation, setOccupation] = useState("");
   const [businessCategory, setBusinessCategory] = useState("");
+  const [meansOfId, setMeansOfId] = useState("");
+  const [idNumber, setIdNumber] = useState("");
+  const [idCountry, setIdCountry] = useState(initialCountry);
+  const [idFileDataUrl, setIdFileDataUrl] = useState("");
+  const [idFileName, setIdFileName] = useState("");
+  const [idFileSize, setIdFileSize] = useState(0);
+  const [businessPhone, setBusinessPhone] = useState("");
+  const [businessCountry, setBusinessCountry] = useState(initialCountry);
+  const [businessMeansOfId, setBusinessMeansOfId] = useState("");
+  const [businessIdFileDataUrl, setBusinessIdFileDataUrl] = useState("");
+  const [businessIdFileName, setBusinessIdFileName] = useState("");
+  const [businessIdFileSize, setBusinessIdFileSize] = useState(0);
+  const [pin, setPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [showPin, setShowPin] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
+  const idFileInputRef = useRef<HTMLInputElement | null>(null);
+  const businessIdFileInputRef = useRef<HTMLInputElement | null>(null);
+  const loginMutation = useLogin();
+  const registerIndividualMutation = useRegisterIndividual();
+  const registerBusinessMutation = useRegisterBusiness();
 
-  const formattedPhone = `${callingCodes[country] || ""} ${phone.trim()}`.trim();
+  const isAuthSubmitting =
+    loginMutation.isPending ||
+    registerIndividualMutation.isPending ||
+    registerBusinessMutation.isPending;
 
-  const submit = (event: React.FormEvent) => {
+  useEffect(() => {
+    if (!sessionNotice) return;
+    toast.error(sessionNotice);
+    onClearSessionNotice?.();
+  }, [sessionNotice, onClearSessionNotice]);
+
+  const apiPhone =
+    `${callingCodes[country] || ""}${phone.replace(/\s+/g, "")}`.trim() ||
+    phone.trim();
+  const apiBusinessPhone =
+    `${callingCodes[businessCountry] || ""}${businessPhone.replace(/\s+/g, "")}`.trim() ||
+    businessPhone.trim();
+
+  const handleFileUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+    target: "identity" | "business",
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    if (file.size > MAX_ID_FILE_BYTES) {
+      toast.error("ID file must be 5 MB or smaller.");
+      return;
+    }
+
+    try {
+      const encoded = await readFileAsDataUrl(file);
+      if (target === "business") {
+        setBusinessIdFileDataUrl(encoded);
+        setBusinessIdFileName(file.name);
+        setBusinessIdFileSize(file.size);
+      } else {
+        setIdFileDataUrl(encoded);
+        setIdFileName(file.name);
+        setIdFileSize(file.size);
+      }
+    } catch (fileError) {
+      toast.error(
+        getErrorMessage(fileError, "Could not read selected ID file."),
+      );
+    }
+  };
+
+  const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    setError("");
-    setNotice("");
     onClearSessionNotice?.();
 
     if (mode === "forgot") {
       if (forgotStage === 1) {
         if (!isValidEmail(email)) {
-          setError("Enter a valid email address linked to your account.");
+          toast.error("Enter a valid email address linked to your account.");
           return;
         }
         const registered = getAccountsForType(accountType);
         if (registered.length > 0 && !findAccountByEmail(accountType, email)) {
-          setError("No account found with that email address.");
+          toast.error("No account found with that email address.");
           return;
         }
         setForgotStage(2);
         setResetOtp("");
         setNewPassword("");
         setConfirmNewPassword("");
-        setNotice(`Verification code sent to ${email.trim()}. Use 123456 for this prototype.`);
+        toast.success(`Verification code sent to ${email.trim()}. Use 123456 for this prototype.`);
         return;
       }
 
       if (resetOtp !== "123456") {
-        setError("That verification code did not match. Use 123456 for this prototype.");
+        toast.error("That verification code did not match. Use 123456 for this prototype.");
         return;
       }
       if (newPassword.length < 8) {
-        setError("Create a new password with at least 8 characters.");
+        toast.error("Create a new password with at least 8 characters.");
         return;
       }
       if (newPassword !== confirmNewPassword) {
-        setError("Your passwords do not match.");
+        toast.error("Your passwords do not match.");
         return;
       }
       updateStoredPassword(accountType, email, newPassword);
@@ -119,164 +212,281 @@ export function AuthScreen({
       setConfirmNewPassword("");
       setShowPassword(false);
       setMode("signin");
-      setNotice("Password updated. Sign in with your new password.");
+      toast.success("Password updated. Sign in with your new password.");
       return;
     }
 
     if (mode === "signup" && stage === 1) {
       if (accountType === "business" && businessName.trim().length < 2) {
-        setError("Enter your business name to continue.");
+        toast.error("Enter your business name to continue.");
         return;
       }
       if (accountType === "business" && businessRegistrationNumber.trim().length < 2) {
-        setError("Enter your company registration number to continue.");
+        toast.error("Enter your company registration number to continue.");
         return;
       }
       if (fullName.trim().length < 2) {
-        setError("Enter your full name to continue.");
+        toast.error("Enter your full name to continue.");
         return;
       }
       if (!isValidEmail(email)) {
-        setError("Enter a valid email address.");
+        toast.error("Enter a valid email address.");
         return;
       }
       if (!isValidPhone(phone)) {
-        setError("Enter a valid phone number (7 to 15 digits).");
+        toast.error("Enter a valid phone number (7 to 15 digits).");
         return;
       }
       if (!country) {
-        setError("Select your country to continue.");
+        toast.error("Select your country to continue.");
         return;
       }
       if (hasDuplicateAccount(accountType, email, phone)) {
-        setError("An account with this email or phone already exists. Sign in or reset your password.");
+        toast.error("An account with this email or phone already exists. Sign in or reset your password.");
         return;
       }
-      setNotice(`Demo verification code sent to ${formattedPhone || phone}.`);
+
       setStage(2);
       return;
     }
 
     if (mode === "signup" && stage === 2) {
-      if (otp !== "123456") {
-        setError("That code did not match. Use 123456 for this prototype.");
+      if (!dateOfBirth) {
+        toast.error("Enter your date of birth to continue.");
         return;
       }
-      setNotice("");
+      const parsedDob = new Date(dateOfBirth);
+      if (Number.isNaN(parsedDob.getTime()) || parsedDob > new Date()) {
+        toast.error("Enter a valid date of birth.");
+        return;
+      }
+      if (accountType === "business" ? !businessCategory : !occupation) {
+        toast.error("Complete your profile details.");
+        return;
+      }
+      if (address.trim().length < 5) {
+        toast.error(
+          accountType === "business"
+            ? "Enter your full business address to continue."
+            : "Enter your full residential address to continue.",
+        );
+        return;
+      }
+      if (!meansOfId) {
+        toast.error("Select a valid means of identification.");
+        return;
+      }
+      if (idNumber.trim().length < 4) {
+        toast.error("Enter your identification number.");
+        return;
+      }
+      if (!idCountry) {
+        toast.error("Select your ID issuing country.");
+        return;
+      }
+      if (accountType === "business") {
+        if (!businessCountry) {
+          toast.error("Select your business registration country.");
+          return;
+        }
+        if (!isValidPhone(businessPhone)) {
+          toast.error("Enter a valid business phone number (7 to 15 digits).");
+          return;
+        }
+        if (!businessMeansOfId) {
+          toast.error("Select your business registration document type.");
+          return;
+        }
+      }
+
       setStage(3);
       return;
     }
 
     if (mode === "signup" && stage === 3) {
-      if (!dateOfBirth) {
-        setError("Enter your date of birth to continue.");
+      if (!idFileDataUrl) {
+        toast.error("Upload a clear copy of your identification document.");
         return;
       }
-      const parsedDob = new Date(dateOfBirth);
-      if (Number.isNaN(parsedDob.getTime()) || parsedDob > new Date()) {
-        setError("Enter a valid date of birth.");
-        return;
-      }
-      if (accountType === "business" ? !businessCategory : !occupation) {
-        setError("Complete your profile details.");
-        return;
-      }
-      if (address.trim().length < 5) {
-        setError("Enter your full residential address to continue.");
+      if (accountType === "business" && !businessIdFileDataUrl) {
+        toast.error("Upload a clear copy of your business document.");
         return;
       }
       if (password.length < 8) {
-        setError("Create a password with at least 8 characters.");
+        toast.error("Create a password with at least 8 characters.");
         return;
       }
       if (password !== confirmPassword) {
-        setError("Your passwords do not match.");
+        toast.error("Your passwords do not match.");
+        return;
+      }
+      if (!/^\d{4,6}$/.test(pin)) {
+        toast.error("Create a 4 to 6 digit numeric transaction PIN.");
+        return;
+      }
+      if (pin !== confirmPin) {
+        toast.error("Your transaction PINs do not match.");
         return;
       }
 
-      saveStoredAccount({
-        accountType,
-        country,
-        fullName: fullName.trim(),
-        businessName: businessName.trim(),
-        businessRegistrationNumber: businessRegistrationNumber.trim() || undefined,
-        email: email.trim(),
-        phone: phone.trim(),
-        password,
-        dateOfBirth,
-        address: address.trim(),
-        occupation,
-        businessCategory,
-      });
+      try {
+        const result =
+          accountType === "business"
+            ? await registerBusinessMutation.mutateAsync(
+                mapRegisterBusinessInputToRequest({
+                  password,
+                  country,
+                  name: fullName,
+                  meansOfId,
+                  idNumber,
+                  idFile: idFileDataUrl,
+                  idCountry,
+                  phone: apiPhone,
+                  businessName,
+                  businessPhone: apiBusinessPhone,
+                  businessAddress: address,
+                  businessMeansOfId,
+                  businessIdNumber: businessRegistrationNumber,
+                  businessIdFile: businessIdFileDataUrl,
+                  businessCountry,
+                  pin,
+                }),
+              )
+            : await registerIndividualMutation.mutateAsync(
+                mapRegisterIndividualInputToRequest({
+                  password,
+                  country,
+                  name: fullName,
+                  meansOfId,
+                  idNumber,
+                  idFile: idFileDataUrl,
+                  idCountry,
+                  phone: apiPhone,
+                  pin,
+                }),
+              );
+
+        setAuthCookies({
+          vault: result.vault,
+          code: result.code,
+        });
+
+        onComplete({
+          accountType,
+          country,
+          fullName: fullName.trim(),
+          businessName: accountType === "business" ? businessName.trim() : "",
+          email: email.trim(),
+          phone: phone.trim(),
+          dateOfBirth,
+          address: address.trim(),
+          occupation: accountType === "individual" ? occupation : "",
+          businessCategory:
+            accountType === "business" ? businessCategory : "",
+          vault: result.vault,
+          registrationCode: result.code,
+        });
+
+        setMode("signin");
+        toast.success(
+          result.code
+            ? `Your account is ready (Ref: ${result.code}). Sign in to continue.`
+            : "Your account is ready. Sign in to continue.",
+        );
+        setMeansOfId("");
+        setIdNumber("");
+        setIdFileDataUrl("");
+        setIdFileName("");
+        setIdFileSize(0);
+        setBusinessPhone("");
+        setBusinessMeansOfId("");
+        setBusinessIdFileDataUrl("");
+        setBusinessIdFileName("");
+        setBusinessIdFileSize(0);
+        setPin("");
+        setConfirmPin("");
+        setShowPin(false);
+        setPassword("");
+        setConfirmPassword("");
+        setShowPassword(false);
+        setStage(1);
+        return;
+      } catch (err) {
+        const baseMessage = getErrorMessage(
+          err,
+          "Unable to register your account. Please try again.",
+        );
+        const firstFieldError =
+          isApiError(err) && err.fieldErrors
+            ? Object.values(err.fieldErrors).flat()[0]
+            : undefined;
+        toast.error(firstFieldError || baseMessage);
+        return;
+      }
     }
 
-    let matchedAccount = undefined;
     if (mode === "signin") {
-      if (accountType === "business") {
-        if (!isValidEmail(email)) {
-          setError("Enter a valid business email address.");
-          return;
-        }
-      } else if (!isValidPhone(phone)) {
-        setError("Enter a valid phone number.");
+      if (!isValidPhone(phone)) {
+        toast.error("Enter a valid phone number.");
         return;
       }
       if (!password.trim()) {
-        setError("Enter your password to sign in.");
+        toast.error("Enter your password to sign in.");
         return;
       }
 
-      const registered = getAccountsForType(accountType);
-      if (registered.length > 0) {
-        matchedAccount = findAccountByIdentifier(
-          accountType,
-          accountType === "business" ? email : phone,
+      const cleanLoginPhone = phone.replace(/\s+/g, "").trim();
+
+      try {
+        const result = await loginMutation.mutateAsync(
+          mapLoginInputToRequest({
+            phone: cleanLoginPhone,
+            password,
+          }),
         );
-        if (!matchedAccount) {
-          setError("No account found for those details. Check your entry or register.");
-          return;
-        }
-        if (matchedAccount.password !== password) {
-          setError("Incorrect password. Try again or reset your password.");
-          return;
-        }
-      } else if (password.trim().length < 6) {
-        setError("Password must be at least 6 characters.");
-        return;
-      }
-    }
 
-    onComplete({
-      accountType,
-      country: matchedAccount?.country || country,
-      fullName:
-        mode === "signup"
-          ? fullName.trim()
-          : matchedAccount?.fullName ||
-            (accountType === "individual"
+        setAuthCookies(result.authHeaders);
+
+        onComplete({
+          accountType,
+          country:
+            localStorage.getItem(`settle-demo-${accountType}-country`) ||
+            country,
+          fullName:
+            accountType === "individual"
               ? localStorage.getItem("settle-demo-name") || "Chima Angwe"
-              : ""),
-      businessName:
-        mode === "signup"
-          ? businessName.trim()
-          : matchedAccount?.businessName ||
+              : "",
+          businessName:
             localStorage.getItem("settle-demo-business-name") ||
             "Chima Ventures",
-      email: (matchedAccount?.email || email).trim(),
-      phone: (matchedAccount?.phone || phone).trim(),
-      dateOfBirth: matchedAccount?.dateOfBirth || dateOfBirth,
-      address: (matchedAccount?.address || address).trim(),
-      occupation: matchedAccount?.occupation || occupation,
-      businessCategory: matchedAccount?.businessCategory || businessCategory,
-    });
+          email: (
+            localStorage.getItem(`settle-demo-${accountType}-email`) || email
+          ).trim(),
+          phone: cleanLoginPhone,
+          dateOfBirth,
+          address: address.trim(),
+          occupation,
+          businessCategory,
+          vault: result.authHeaders.vault,
+          registrationCode: result.authHeaders.code,
+        });
 
-    if (mode === "signup") {
-      setMode("signin");
-      setNotice("Your account is ready. Sign in to continue.");
-      setPassword("");
-      setConfirmPassword("");
-      setShowPassword(false);
-      setStage(1);
+        setPassword("");
+        setShowPassword(false);
+        toast.success(result.message || "Account logged in successfully.");
+        return;
+      } catch (err) {
+        const baseMessage = getErrorMessage(
+          err,
+          "Unable to sign in. Check your phone number and password.",
+        );
+        const firstFieldError =
+          isApiError(err) && err.fieldErrors
+            ? Object.values(err.fieldErrors).flat()[0]
+            : undefined;
+        toast.error(firstFieldError || baseMessage);
+        return;
+      }
     }
   };
 
@@ -285,8 +495,8 @@ export function AuthScreen({
       ? stage === 1
         ? "Create your account"
         : stage === 2
-          ? "Verify your phone"
-          : "Complete your profile"
+          ? "Complete your profile"
+          : "Verify ID & set security"
       : mode === "forgot"
         ? forgotStage === 1
           ? "Recover account access"
@@ -294,18 +504,16 @@ export function AuthScreen({
         : "Welcome back";
 
   const changeAccountType = (nextType: AccountType) => {
+    const nextCountry =
+      localStorage.getItem(`settle-demo-${nextType}-country`) || "Nigeria";
     onAccountTypeChange(nextType);
-    setCountry(
-      localStorage.getItem(`settle-demo-${nextType}-country`) || "Nigeria",
-    );
-    setError("");
-    setNotice("");
+    setCountry(nextCountry);
+    setIdCountry(nextCountry);
+    setBusinessCountry(nextCountry);
     onClearSessionNotice?.();
   };
 
   const switchMode = (nextMode: "signin" | "signup" | "forgot") => {
-    setError("");
-    setNotice("");
     onClearSessionNotice?.();
     setShowPassword(false);
     setStage(1);
@@ -428,22 +636,11 @@ export function AuthScreen({
             </div>
           )}
 
-          {sessionNotice && !error && !notice && (
-            <div className="notice error-notice auth-notice" role="alert">
-              <span>{sessionNotice}</span>
-            </div>
-          )}
-
-          {notice && (
-            <div className="notice success-notice auth-notice">
-              <Icon name="check" size={15} />
-              <span>{notice}</span>
-            </div>
-          )}
-
           <form
             noValidate
-            onSubmit={submit}
+            onSubmit={(event) => {
+              void submit(event);
+            }}
             className={`auth-form ${mode === "signup" ? "auth-signup-form" : ""}`}
           >
             {mode === "signup" && stage === 1 && (
@@ -505,7 +702,18 @@ export function AuthScreen({
                   </label>
                   <div className="auth-phone-country-control">
                     <div className="auth-phone-country-select">
-                      <CountrySelect value={country} onChange={setCountry} />
+                      <CountrySelect
+                        value={country}
+                        onChange={(nextCountry) => {
+                          setCountry(nextCountry);
+                          if (!idCountry || idCountry === country) {
+                            setIdCountry(nextCountry);
+                          }
+                          if (!businessCountry || businessCountry === country) {
+                            setBusinessCountry(nextCountry);
+                          }
+                        }}
+                      />
                     </div>
                     <div className="auth-phone-input-wrap">
                       <span>{callingCodes[country] || "+"}</span>
@@ -527,45 +735,6 @@ export function AuthScreen({
             )}
 
             {mode === "signup" && stage === 2 && (
-              <div className="otp-panel">
-                <span className="otp-icon">
-                  <Icon name="phone" size={20} />
-                </span>
-                <label>
-                  6-digit verification code
-                  <input
-                    required
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    pattern="[0-9]{6}"
-                    maxLength={6}
-                    value={otp}
-                    onChange={(e) =>
-                      setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
-                    }
-                    placeholder="000000"
-                  />
-                </label>
-                <div className="otp-meta">
-                  <small>
-                    Prototype code: <strong>123456</strong>
-                  </small>
-                  <button
-                    type="button"
-                    className="text-button otp-resend"
-                    onClick={() =>
-                      setNotice(
-                        `Demo code resent to ${formattedPhone || phone}: 123456`,
-                      )
-                    }
-                  >
-                    Resend code
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {mode === "signup" && stage === 3 && (
               <>
                 <div className="auth-field-row">
                   <label>
@@ -580,47 +749,45 @@ export function AuthScreen({
                   {accountType === "business" ? (
                     <label>
                       Business type
-                      <select
-                        required
+                      <CustomSelect
                         value={businessCategory}
-                        onChange={(e) => setBusinessCategory(e.target.value)}
-                      >
-                        <option value="">Choose category</option>
-                        {[
+                        onChange={setBusinessCategory}
+                        placeholder="Choose category"
+                        modalTitle="Select business type"
+                        triggerClassName="h-[40px] px-3 rounded-[11px] text-[13px] font-normal"
+                        options={[
                           "Retail and trade",
                           "Professional services",
                           "Technology",
                           "Logistics",
                           "Other",
-                        ].map((item) => (
-                          <option key={item}>{item}</option>
-                        ))}
-                      </select>
+                        ]}
+                      />
                     </label>
                   ) : (
                     <label>
                       Occupation
-                      <select
-                        required
+                      <CustomSelect
                         value={occupation}
-                        onChange={(e) => setOccupation(e.target.value)}
-                      >
-                        <option value="">Choose occupation</option>
-                        {[
+                        onChange={setOccupation}
+                        placeholder="Choose occupation"
+                        modalTitle="Select occupation"
+                        triggerClassName="h-[40px] px-3 rounded-[11px] text-[13px] font-normal"
+                        options={[
                           "Salaried employee",
                           "Self-employed",
                           "Student",
                           "Other",
-                        ].map((item) => (
-                          <option key={item}>{item}</option>
-                        ))}
-                      </select>
+                        ]}
+                      />
                     </label>
                   )}
                 </div>
 
                 <label className="auth-full-field">
-                  Residential address
+                  {accountType === "business"
+                    ? "Business address"
+                    : "Residential address"}
                   <input
                     required
                     value={address}
@@ -629,6 +796,191 @@ export function AuthScreen({
                     autoComplete="street-address"
                   />
                 </label>
+
+                {accountType === "business" && (
+                  <>
+                    <div className="auth-phone-country-field">
+                      <label
+                        className="auth-phone-label"
+                        htmlFor="signup-business-phone"
+                      >
+                        Business phone &amp; country
+                      </label>
+                      <div className="auth-phone-country-control">
+                        <div className="auth-phone-country-select">
+                          <CountrySelect
+                            value={businessCountry}
+                            onChange={setBusinessCountry}
+                          />
+                        </div>
+                        <div className="auth-phone-input-wrap">
+                          <span>{callingCodes[businessCountry] || "+"}</span>
+                          <input
+                            id="signup-business-phone"
+                            required
+                            type="tel"
+                            value={businessPhone}
+                            onChange={(e) =>
+                              setBusinessPhone(
+                                e.target.value.replace(/[^0-9 ]/g, ""),
+                              )
+                            }
+                            placeholder="801 234 5678"
+                            autoComplete="tel-national"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <label className="auth-full-field">
+                      Business document type
+                      <CustomSelect
+                        value={businessMeansOfId}
+                        onChange={setBusinessMeansOfId}
+                        placeholder="Choose business document"
+                        modalTitle="Select business document type"
+                        triggerClassName="h-[40px] px-3 rounded-[11px] text-[13px] font-normal"
+                        options={BUSINESS_MEANS_OF_ID_OPTIONS}
+                      />
+                    </label>
+                  </>
+                )}
+
+                <div className="auth-field-row">
+                  <label>
+                    {accountType === "business"
+                      ? "Owner means of ID"
+                      : "Means of ID"}
+                    <CustomSelect
+                      value={meansOfId}
+                      onChange={setMeansOfId}
+                      placeholder="Choose ID type"
+                      modalTitle="Select means of ID"
+                      triggerClassName="h-[40px] px-3 rounded-[11px] text-[13px] font-normal"
+                      options={MEANS_OF_ID_OPTIONS}
+                    />
+                  </label>
+                  <label>
+                    {accountType === "business" ? "Owner ID number" : "ID number"}
+                    <input
+                      required
+                      value={idNumber}
+                      onChange={(e) => setIdNumber(e.target.value)}
+                      placeholder="e.g. A01234567"
+                      autoComplete="off"
+                    />
+                  </label>
+                </div>
+
+                <div className="auth-phone-country-field">
+                  <span className="auth-phone-label">
+                    {accountType === "business"
+                      ? "Owner ID issuing country"
+                      : "ID issuing country"}
+                  </span>
+                  <div className="auth-phone-country-select">
+                    <CountrySelect value={idCountry} onChange={setIdCountry} />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {mode === "signup" && stage === 3 && (
+              <>
+                <div className="auth-phone-country-field">
+                  <span className="auth-phone-label">
+                    {accountType === "business"
+                      ? "Upload owner ID document"
+                      : "Upload ID document"}
+                  </span>
+                  <input
+                    ref={idFileInputRef}
+                    type="file"
+                    accept="image/*,.pdf"
+                    className="hidden"
+                    onChange={(event) => {
+                      void handleFileUpload(event, "identity");
+                    }}
+                  />
+                  {idFileDataUrl ? (
+                    <div className="h-[42px] px-3 rounded-[11px] border border-line bg-paper flex items-center justify-between gap-2 text-xs">
+                      <span className="truncate text-ink font-medium">
+                        {idFileName} ({Math.max(1, Math.round(idFileSize / 1024))} KB)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIdFileDataUrl("");
+                          setIdFileName("");
+                          setIdFileSize(0);
+                        }}
+                        className="text-[11px] font-semibold text-muted hover:text-ink shrink-0 cursor-pointer"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => idFileInputRef.current?.click()}
+                      className="h-[42px] px-3 rounded-[11px] border border-dashed border-line bg-paper hover:border-ink text-xs text-muted flex items-center justify-between gap-2 transition-colors cursor-pointer"
+                    >
+                      <span className="truncate">Upload ID (JPG, PNG, PDF)</span>
+                      <span className="text-[11px] font-semibold text-ink shrink-0">
+                        Browse
+                      </span>
+                    </button>
+                  )}
+                </div>
+
+                {accountType === "business" && (
+                  <div className="auth-phone-country-field">
+                    <span className="auth-phone-label">
+                      Upload business registration document
+                    </span>
+                    <input
+                      ref={businessIdFileInputRef}
+                      type="file"
+                      accept="image/*,.pdf"
+                      className="hidden"
+                      onChange={(event) => {
+                        void handleFileUpload(event, "business");
+                      }}
+                    />
+                    {businessIdFileDataUrl ? (
+                      <div className="h-[42px] px-3 rounded-[11px] border border-line bg-paper flex items-center justify-between gap-2 text-xs">
+                        <span className="truncate text-ink font-medium">
+                          {businessIdFileName} (
+                          {Math.max(1, Math.round(businessIdFileSize / 1024))} KB)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBusinessIdFileDataUrl("");
+                            setBusinessIdFileName("");
+                            setBusinessIdFileSize(0);
+                          }}
+                          className="text-[11px] font-semibold text-muted hover:text-ink shrink-0 cursor-pointer"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => businessIdFileInputRef.current?.click()}
+                        className="h-[42px] px-3 rounded-[11px] border border-dashed border-line bg-paper hover:border-ink text-xs text-muted flex items-center justify-between gap-2 transition-colors cursor-pointer"
+                      >
+                        <span className="truncate">
+                          Upload business doc (JPG, PNG, PDF)
+                        </span>
+                        <span className="text-[11px] font-semibold text-ink shrink-0">
+                          Browse
+                        </span>
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 <div className="auth-field-row">
                   <label>
@@ -670,13 +1022,61 @@ export function AuthScreen({
                     </div>
                   </label>
                 </div>
+
+                <div className="auth-field-row">
+                  <label>
+                    Transaction PIN
+                    <div className="password-wrap">
+                      <input
+                        required
+                        inputMode="numeric"
+                        pattern="[0-9]{4,6}"
+                        maxLength={6}
+                        type={showPin ? "text" : "password"}
+                        value={pin}
+                        onChange={(e) =>
+                          setPin(e.target.value.replace(/\D/g, "").slice(0, 6))
+                        }
+                        placeholder="4–6 digits"
+                        autoComplete="off"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPin((v) => !v)}
+                        aria-label={showPin ? "Hide PIN" : "Show PIN"}
+                      >
+                        <Icon name={showPin ? "eyeOff" : "eye"} size={16} />
+                      </button>
+                    </div>
+                  </label>
+
+                  <label>
+                    Confirm PIN
+                    <div className="password-wrap">
+                      <input
+                        required
+                        inputMode="numeric"
+                        pattern="[0-9]{4,6}"
+                        maxLength={6}
+                        type={showPin ? "text" : "password"}
+                        value={confirmPin}
+                        onChange={(e) =>
+                          setConfirmPin(
+                            e.target.value.replace(/\D/g, "").slice(0, 6),
+                          )
+                        }
+                        placeholder="Re-enter PIN"
+                        autoComplete="off"
+                      />
+                    </div>
+                  </label>
+                </div>
               </>
             )}
 
             {(mode === "signin" || mode === "forgot") && (
               <>
-                {(mode === "forgot" && forgotStage === 1) ||
-                (mode === "signin" && accountType === "business") ? (
+                {mode === "forgot" && forgotStage === 1 ? (
                   <label>
                     Email address
                     <input
@@ -794,43 +1194,40 @@ export function AuthScreen({
               </>
             )}
 
-            {error && (
-              <div className="notice error-notice auth-notice" role="alert">
-                <span>{error}</span>
-              </div>
-            )}
-
             <div className="auth-actions">
               {((mode === "signup" && stage > 1) ||
                 (mode === "forgot" && forgotStage > 1)) && (
-                <button
-                  type="button"
-                  className="button button-quiet auth-back"
-                  onClick={() => {
-                    setError("");
-                    setNotice("");
-                    if (mode === "forgot") setForgotStage(1);
-                    else setStage(stage - 1);
-                  }}
-                >
-                  ← Back
-                </button>
-              )}
+                  <button
+                    type="button"
+                    className="button button-quiet auth-back"
+                    disabled={isAuthSubmitting}
+                    onClick={() => {
+                      if (mode === "forgot") setForgotStage(1);
+                      else setStage(stage - 1);
+                    }}
+                  >
+                    ← Back
+                  </button>
+                )}
               <button
                 className="button button-primary auth-submit"
                 type="submit"
+                disabled={isAuthSubmitting}
               >
                 {mode === "signup"
-                  ? stage === 1
-                    ? "Send code"
-                    : stage === 2
-                      ? "Verify & continue"
+                  ? stage === 1 || stage === 2
+                    ? "Continue"
+                    : registerIndividualMutation.isPending ||
+                        registerBusinessMutation.isPending
+                      ? "Creating account..."
                       : "Create account"
                   : mode === "forgot"
                     ? forgotStage === 1
                       ? "Send recovery code"
                       : "Update password"
-                    : "Sign in"}
+                    : loginMutation.isPending
+                      ? "Signing in..."
+                      : "Sign in"}
                 <span>→</span>
               </button>
             </div>

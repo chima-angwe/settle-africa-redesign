@@ -1,6 +1,6 @@
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Icon } from "@/shared/ui";
+import { CustomSelect, Icon } from "@/shared/ui";
 import { formatTransferTimestamp, parseCsvLine } from "@/shared/lib";
 import type { Transfer } from "@/entities/transfer";
 import { countries, CountryBadge } from "@/entities/country";
@@ -970,20 +970,16 @@ export function BulkTransfer({
                     <span className="text-[11px] font-bold text-muted uppercase tracking-wider">
                       RECIPIENT {index + 1}
                     </span>
-                    <select
+                    <CustomSelect
                       value={row.country}
-                      onChange={(e) =>
-                        handleFieldChange(row.key, "country", e.target.value)
+                      onChange={(value) =>
+                        handleFieldChange(row.key, "country", value)
                       }
-                      aria-label={`Recipient ${index + 1} country`}
-                      className="h-8 pl-2.5 border border-line rounded-lg bg-soft text-ink text-[11px] font-medium outline-none cursor-pointer"
-                    >
-                      {Object.keys(CORRIDOR_BANKS).map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
+                      ariaLabel={`Recipient ${index + 1} country`}
+                      modalTitle={`Recipient ${index + 1} country`}
+                      options={Object.keys(CORRIDOR_BANKS)}
+                      triggerClassName="h-8 px-2.5 rounded-lg bg-soft text-[11px] font-medium"
+                    />
                     {verified && (
                       <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
                         <Icon name="check" size={12} />
@@ -1033,20 +1029,16 @@ export function BulkTransfer({
                     <label className="text-[11px] font-semibold text-ink block">
                       Bank
                     </label>
-                    <select
+                    <CustomSelect
                       value={row.bank}
-                      onChange={(e) =>
-                        handleFieldChange(row.key, "bank", e.target.value)
+                      onChange={(value) =>
+                        handleFieldChange(row.key, "bank", value)
                       }
-                      className="w-full h-11 pl-3.5 pr-10 border border-line rounded-xl bg-paper text-ink text-xs sm:text-sm outline-none focus:border-ink cursor-pointer"
-                    >
-                      <option value="">Select bank...</option>
-                      {banks.map((b) => (
-                        <option key={b} value={b}>
-                          {b}
-                        </option>
-                      ))}
-                    </select>
+                      placeholder="Select bank..."
+                      modalTitle="Select recipient bank"
+                      options={banks}
+                      triggerClassName="h-11 px-3.5 rounded-xl text-xs sm:text-sm font-normal"
+                    />
                   </div>
 
                   {/* Recipient Name (Auto-filled on lookup) */}

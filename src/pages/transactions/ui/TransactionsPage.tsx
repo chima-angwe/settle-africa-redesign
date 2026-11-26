@@ -1,21 +1,32 @@
 import { useState, useMemo } from "react";
-import { Icon, PageHeading } from "@/shared/ui";
+import { CustomSelect, Icon, PageHeading } from "@/shared/ui";
+import { getErrorMessage } from "@/shared/api";
+import { useTransactions } from "@/features/transactions";
+import {
+  DashboardErrorState,
+  DashboardListSkeleton,
+} from "@/widgets/dashboard-overview";
 import { TransferTable } from "@/widgets/transfer-table";
 import type { Transfer } from "@/entities/transfer";
 
 export interface TransactionsPageProps {
-  transfers: Transfer[];
   query: string;
   setQuery: (q: string) => void;
   onSelectTransfer: (transfer: Transfer) => void;
 }
 
 export function TransactionsPage({
-  transfers,
   query,
   setQuery,
   onSelectTransfer,
 }: TransactionsPageProps) {
+  const {
+    data: transfers = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useTransactions();
   const [status, setStatus] = useState("All statuses");
   const [typeFilter, setTypeFilter] = useState("All types");
   const [dateFilter, setDateFilter] = useState("all");
@@ -100,76 +111,91 @@ export function TransactionsPage({
         </label>
 
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-          <div className="relative flex items-center">
-            <Icon
-              name="calendar"
-              size={15}
-              className="pointer-events-none absolute left-3.5 text-muted"
-            />
-            <select
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-              className="h-11 pl-9 pr-9 border border-line rounded-xl bg-paper text-ink text-xs font-medium outline-none cursor-pointer hover:border-ink/40 transition-colors"
-              aria-label="Filter by date"
-            >
-              <option value="all">Filter by date</option>
-              <option value="today">Today</option>
-              <option value="7d">Last 7 days</option>
-              <option value="30d">Last 30 days</option>
-            </select>
-          </div>
+          <CustomSelect
+            value={dateFilter}
+            onChange={setDateFilter}
+            ariaLabel="Filter by date"
+            modalTitle="Filter by date"
+            leftIcon={<Icon name="calendar" size={15} className="text-muted" />}
+            triggerClassName="h-11 px-3.5 rounded-xl text-xs font-medium min-w-[148px]"
+            options={[
+              { value: "all", label: "Filter by date" },
+              { value: "today", label: "Today" },
+              { value: "7d", label: "Last 7 days" },
+              { value: "30d", label: "Last 30 days" },
+            ]}
+          />
 
-          <select
+          <CustomSelect
             value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            className="h-11 pl-3.5 pr-9 border border-line rounded-xl bg-paper text-ink text-xs font-medium outline-none cursor-pointer hover:border-ink/40 transition-colors"
-            aria-label="Filter by type"
-          >
-            <option value="All types">All types</option>
-            <option value="Bank transfer">Bank transfer</option>
-            <option value="Mobile money">Mobile money</option>
-            <option value="Cash pickup">Cash pickup</option>
-            <option value="Airtime top-up">Airtime top-up</option>
-            <option value="Data top-up">Data top-up</option>
-            <option value="Card">Card</option>
-          </select>
+            onChange={setTypeFilter}
+            ariaLabel="Filter by type"
+            modalTitle="Filter by transfer type"
+            triggerClassName="h-11 px-3.5 rounded-xl text-xs font-medium min-w-[132px]"
+            options={[
+              "All types",
+              "Bank transfer",
+              "Mobile money",
+              "Cash pickup",
+              "Airtime top-up",
+              "Data top-up",
+              "Card",
+            ]}
+          />
 
-          <select
+          <CustomSelect
             value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className="h-11 pl-3.5 pr-9 border border-line rounded-xl bg-paper text-ink text-xs font-medium outline-none cursor-pointer hover:border-ink/40 transition-colors"
-            aria-label="Filter by status"
-          >
-            <option value="All statuses">All statuses</option>
-            <option value="Pending">Pending</option>
-            <option value="Processing">Processing</option>
-            <option value="Completed">Completed</option>
-            <option value="Failed">Failed</option>
-            <option value="Cancelled">Cancelled</option>
-          </select>
+            onChange={setStatus}
+            ariaLabel="Filter by status"
+            modalTitle="Filter by status"
+            triggerClassName="h-11 px-3.5 rounded-xl text-xs font-medium min-w-[132px]"
+            options={[
+              "All statuses",
+              "Pending",
+              "Processing",
+              "Completed",
+              "Failed",
+              "Cancelled",
+            ]}
+          />
         </div>
       </div>
 
-      {/* Transactions Card / Empty State */}
-      <TransferTable
-        transfers={filtered}
-        onSelect={onSelectTransfer}
-        paginate={true}
-        pageSize={5}
-        emptyTitle="No transactions found"
-        emptySubtitle="We couldn't find any transaction matching your current criteria."
-        emptyAction={
-          hasActiveFilters ? (
-            <button
-              type="button"
-              className="button button-secondary button-small px-4 py-2 text-xs font-semibold rounded-xl cursor-pointer"
-              onClick={clearFilters}
-            >
-              Clear filters
-            </button>
-          ) : undefined
-        }
-      />
+      {/* Transactions Card / Loading / Error / Empty State */}
+      {isLoading ? (
+        <DashboardListSkeleton rows={5} />
+      ) : isError ? (
+        <DashboardErrorState
+          title="Unable to load transactions"
+          message={getErrorMessage(
+            error,
+            "Could not retrieve transaction history.",
+          )}
+          onRetry={() => {
+            void refetch();
+          }}
+        />
+      ) : (
+        <TransferTable
+          transfers={filtered}
+          onSelect={onSelectTransfer}
+          paginate={true}
+          pageSize={5}
+          emptyTitle="No transactions found"
+          emptySubtitle="We couldn't find any transaction matching your current criteria."
+          emptyAction={
+            hasActiveFilters ? (
+              <button
+                type="button"
+                className="button button-secondary button-small px-4 py-2 text-xs font-semibold rounded-xl cursor-pointer"
+                onClick={clearFilters}
+              >
+                Clear filters
+              </button>
+            ) : undefined
+          }
+        />
+      )}
     </>
   );
 }

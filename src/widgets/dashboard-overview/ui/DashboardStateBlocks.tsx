@@ -49,9 +49,11 @@ export function DashboardListSkeleton({ rows = 3 }: { rows?: number }) {
 }
 
 export function DashboardErrorState({
+  title = "Unable to load overview data",
   message,
   onRetry,
 }: {
+  title?: string;
   message: string;
   onRetry: () => void;
 }) {
@@ -66,7 +68,7 @@ export function DashboardErrorState({
         </span>
         <div>
           <strong className="text-xs sm:text-sm font-heading font-bold text-ink block">
-            Unable to load overview data
+            {title}
           </strong>
           <span className="text-xs text-muted block mt-0.5">{message}</span>
         </div>

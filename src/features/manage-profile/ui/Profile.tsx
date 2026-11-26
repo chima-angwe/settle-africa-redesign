@@ -1,6 +1,6 @@
 import type React from 'react';
 import { useEffect, useState } from 'react';
-import { Icon, PageHeading } from '@/shared/ui';
+import { Icon, PageHeading, toast } from '@/shared/ui';
 import { CountryBadge } from '@/entities/country';
 import type { Transfer } from '@/entities/transfer';
 import type { AccountType } from '@/shared/types';
@@ -70,7 +70,6 @@ export function Profile({
       (!isBusiness ? localStorage.getItem("settle-demo-phone") : null) ||
       "801 234 5678",
   );
-  const [notice, setNotice] = useState("");
   const [internalTab, setInternalTab] = useState<ProfileTab>("Profile");
   const tab = activeTab ?? internalTab;
   const setTab = (next: ProfileTab) => {
@@ -83,7 +82,7 @@ export function Profile({
     event.preventDefault();
     const cleanName = draft.trim();
     if (!cleanName) {
-      setNotice(
+      toast.error(
         isBusiness
           ? "Enter your business name."
           : "Enter your full name.",
@@ -116,19 +115,12 @@ export function Profile({
         phone: phone.trim(),
       },
     });
-    setNotice("Profile updated.");
-    setTimeout(() => setNotice(""), 3000);
+    toast.success("Profile updated.");
   };
   const tabs = ["Profile", "Security", "Notifications", "Help & support"];
   return (
     <>
       <PageHeading title="Profile & settings" />
-      {notice && (
-        <div className="notice success-notice">
-          <Icon name="check" size={16} />
-          {notice}
-        </div>
-      )}
       <div className="profile-v2">
         {tab === "Profile" ? (
           <div className="profile-overview">
@@ -194,8 +186,7 @@ export function Profile({
               accountType={accountType}
               forceExpanded={openVerification}
               onNotice={(message) => {
-                setNotice(message);
-                setTimeout(() => setNotice(""), 3500);
+                toast.success(message);
               }}
               onProfileSynced={(syncedName) => {
                 if (syncedName.trim()) {
@@ -254,12 +245,12 @@ export function Profile({
         ) : (
           <section className="profile-secondary-panel">
             {tab === "Security" ? (
-              <SecuritySettings onSaved={setNotice} />
+              <SecuritySettings onSaved={(msg) => toast.success(msg)} />
             ) : tab === "Notifications" ? (
-              <NotificationSettings onSaved={setNotice} />
+              <NotificationSettings onSaved={(msg) => toast.success(msg)} />
             ) : (
               <HelpSupport
-                onNotice={setNotice}
+                onNotice={(msg) => toast.success(msg)}
                 initialTransferRef={supportTransferRef}
                 onClearTransferRef={onClearSupportTransferRef}
                 transfers={transfers}

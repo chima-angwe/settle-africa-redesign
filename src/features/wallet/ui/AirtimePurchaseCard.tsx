@@ -1,5 +1,5 @@
 import { useState, useId, useRef, useEffect } from "react";
-import { Icon } from "@/shared/ui";
+import { CustomSelect, Icon } from "@/shared/ui";
 import { formatTransferTimestamp } from "@/shared/lib";
 import type { Transfer } from "@/entities/transfer";
 import type { Page } from "@/shared/types";
@@ -56,7 +56,6 @@ export function AirtimePurchaseCard({
   const countrySelectId = useId();
   const phoneInputId = useId();
   const amountInputId = useId();
-  const dropdownRef = useRef<HTMLDivElement>(null);
   const isSubmittingRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -74,7 +73,6 @@ export function AirtimePurchaseCard({
   const [mode, setMode] = useState<TopupMode>(initialMode);
   const [phone, setPhone] = useState<string>("");
   const [selectedOperator, setSelectedOperator] = useState<string>("");
-  const [dropdownOpen, setDropdownOpen] = useState<boolean>(false);
   const [amountInput, setAmountInput] = useState<string>("");
   const [planCategory, setPlanCategory] = useState<"All" | DataPlanCategory>("All");
   const [selectedPlanId, setSelectedPlanId] = useState<string>("");
@@ -95,20 +93,10 @@ export function AirtimePurchaseCard({
     };
   }, []);
 
-  useEffect(() => {
-    if (!dropdownOpen) return;
-    const handleOutside = (event: MouseEvent) => {
-      if (!dropdownRef.current?.contains(event.target as Node)) {
-        setDropdownOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleOutside);
-    return () => document.removeEventListener("mousedown", handleOutside);
-  }, [dropdownOpen]);
-
   const selectedBank = banks.find((b) => b.id === selectedBankId) || banks[0];
-  const selectedOperatorObj = operators.find((o) => o.name === selectedOperator);
-  const activeOperator = selectedOperatorObj ? selectedOperatorObj.name : "";
+  const activeOperator = operators.some((o) => o.name === selectedOperator)
+    ? selectedOperator
+    : "";
   const selectedPlan = dataPlans.find((p) => p.id === selectedPlanId) || null;
   const filteredPlans =
     planCategory === "All"
@@ -139,7 +127,6 @@ export function AirtimePurchaseCard({
       setSelectedOperator("");
     }
     setSelectedPlanId("");
-    setDropdownOpen(false);
     setError("");
   };
 
@@ -517,98 +504,47 @@ export function AirtimePurchaseCard({
             >
               Country
             </label>
-            <select
+            <CustomSelect
               id={countrySelectId}
               value={selectedCountry}
-              onChange={(e) => handleCountryChange(e.target.value)}
-              className="w-full h-11 px-3.5 border border-line rounded-xl bg-paper text-ink text-xs sm:text-sm font-medium outline-none focus:border-ink cursor-pointer"
-            >
-              {SUPPORTED_TOPUP_COUNTRIES.map((c) => {
+              onChange={handleCountryChange}
+              modalTitle="Select country"
+              triggerClassName="h-11 px-3.5 rounded-xl text-xs sm:text-sm font-medium"
+              options={SUPPORTED_TOPUP_COUNTRIES.map((c) => {
                 const info = COUNTRY_CURRENCY_MAP[c];
-                return (
-                  <option key={c} value={c}>
-                    {c} ({info.code})
-                  </option>
-                );
+                return {
+                  value: c,
+                  label: `${c} (${info.code})`,
+                };
               })}
-            </select>
+            />
           </div>
 
-          <div className="space-y-1.5" ref={dropdownRef}>
+          <div className="space-y-1.5">
             <label className="text-xs font-bold text-ink block">
               Network Provider
             </label>
-            <div className="relative">
-              <button
-                type="button"
-                aria-expanded={dropdownOpen}
-                onClick={() => setDropdownOpen((o) => !o)}
-                className={`w-full h-11 px-3.5 border rounded-xl bg-paper flex items-center justify-between gap-2 text-left text-xs sm:text-sm outline-none transition-colors cursor-pointer ${
-                  dropdownOpen ? "border-ink" : "border-line hover:border-ink/50"
-                }`}
-              >
-                {selectedOperatorObj ? (
-                  <span className="flex items-center gap-2.5 min-w-0">
-                    <OperatorLogo
-                      operator={selectedOperatorObj.name}
-                      code={selectedOperatorObj.code}
-                      size={22}
-                    />
-                    <span className="font-medium text-ink truncate">
-                      {selectedOperatorObj.name}
-                    </span>
-                  </span>
-                ) : (
-                  <span className="text-muted">Choose operator</span>
-                )}
-                <Icon
-                  name="chevron"
-                  size={15}
-                  className={`text-muted shrink-0 transition-transform ${
-                    dropdownOpen ? "-rotate-90" : "rotate-90"
-                  }`}
-                />
-              </button>
-
-              {dropdownOpen && (
-                <div
-                  role="listbox"
-                  className="absolute z-40 left-0 right-0 top-[calc(100%+6px)] bg-paper border border-line rounded-xl shadow-card overflow-hidden divide-y divide-line/60"
-                >
-                  {operators.map((op) => {
-                    const isSel = selectedOperator === op.name;
-                    return (
-                      <button
-                        key={op.code}
-                        type="button"
-                        role="option"
-                        aria-selected={isSel}
-                        onClick={() => {
-                          setSelectedOperator(op.name);
-                          setDropdownOpen(false);
-                          setError("");
-                        }}
-                        className={`w-full px-3.5 py-2.5 flex items-center justify-between gap-3 text-left text-xs sm:text-sm hover:bg-soft transition-colors cursor-pointer ${
-                          isSel ? "bg-soft font-semibold text-ink" : "text-ink"
-                        }`}
-                      >
-                        <span className="flex items-center gap-2.5 min-w-0">
-                          <OperatorLogo
-                            operator={op.name}
-                            code={op.code}
-                            size={22}
-                          />
-                          <span>{op.name}</span>
-                        </span>
-                        {isSel && (
-                          <Icon name="check" size={14} className="text-ink shrink-0" />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+            <CustomSelect
+              value={activeOperator}
+              onChange={(value) => {
+                setSelectedOperator(value);
+                setError("");
+              }}
+              placeholder="Choose operator"
+              modalTitle="Choose network provider"
+              triggerClassName="h-11 px-3.5 rounded-xl text-xs sm:text-sm font-medium"
+              options={operators.map((op) => ({
+                value: op.name,
+                label: op.name,
+                icon: (
+                  <OperatorLogo
+                    operator={op.name}
+                    code={op.code}
+                    size={22}
+                  />
+                ),
+              }))}
+            />
           </div>
         </div>
 
@@ -801,20 +737,19 @@ export function AirtimePurchaseCard({
             <label className="text-[10px] font-bold text-muted uppercase tracking-wider block">
               ACCOUNT
             </label>
-            <select
+            <CustomSelect
               value={selectedBankId}
-              onChange={(e) => {
-                setSelectedBankId(e.target.value);
+              onChange={(value) => {
+                setSelectedBankId(value);
                 setError("");
               }}
-              className="w-full h-11 pl-3.5 pr-10 border border-line bg-soft text-ink text-xs font-medium rounded-xl outline-none cursor-pointer hover:border-ink transition-colors"
-            >
-              {banks.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.bank} (•••• {b.account})
-                </option>
-              ))}
-            </select>
+              modalTitle="Select account"
+              triggerClassName="h-11 px-3.5 rounded-xl bg-soft text-xs font-medium"
+              options={banks.map((b) => ({
+                value: b.id,
+                label: `${b.bank} (•••• ${b.account})`,
+              }))}
+            />
           </div>
         )}
       </div>

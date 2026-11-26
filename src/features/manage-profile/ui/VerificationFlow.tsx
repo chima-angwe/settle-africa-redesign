@@ -1,7 +1,7 @@
 import type React from "react";
 import { useEffect, useId, useState } from "react";
 import { CountrySelect } from "@/entities/country";
-import { Icon } from "@/shared/ui";
+import { CustomSelect, Icon } from "@/shared/ui";
 import type { AccountType } from "@/shared/types";
 import {
   VERIFICATION_DOCUMENT_TYPES,
@@ -665,22 +665,17 @@ export function VerificationFlow({
                     <label className="text-xs font-medium text-muted block mb-1.5">
                       Business category
                     </label>
-                    <select
+                    <CustomSelect
                       value={personal.businessCategory}
-                      onChange={(e) =>
-                        updatePersonalField("businessCategory", e.target.value)
+                      onChange={(value) =>
+                        updatePersonalField("businessCategory", value)
                       }
-                      className={`w-full h-11 pl-3.5 pr-10 border rounded-xl bg-paper text-ink text-sm outline-none focus:border-ink cursor-pointer ${
-                        errors.businessCategory ? "border-rose-500" : "border-line"
-                      }`}
-                    >
-                      <option value="">Select category</option>
-                      {BUSINESS_CATEGORIES.map((cat) => (
-                        <option key={cat} value={cat}>
-                          {cat}
-                        </option>
-                      ))}
-                    </select>
+                      placeholder="Select category"
+                      modalTitle="Select business category"
+                      options={BUSINESS_CATEGORIES}
+                      hasError={Boolean(errors.businessCategory)}
+                      triggerClassName="h-11 px-3.5 rounded-xl text-sm font-normal"
+                    />
                     {errors.businessCategory && (
                       <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-1">
                         {errors.businessCategory}
@@ -760,22 +755,18 @@ export function VerificationFlow({
                   <label className="text-xs font-medium text-muted block mb-1.5">
                     Document type
                   </label>
-                  <select
+                  <CustomSelect
                     value={document.documentType}
-                    onChange={(e) =>
+                    onChange={(value) =>
                       updateDocumentField(
                         "documentType",
-                        e.target.value as VerificationDocumentType,
+                        value as VerificationDocumentType,
                       )
                     }
-                    className="w-full h-11 pl-3.5 pr-10 border border-line rounded-xl bg-paper text-ink text-sm outline-none focus:border-ink cursor-pointer"
-                  >
-                    {VERIFICATION_DOCUMENT_TYPES.map((type) => (
-                      <option key={type} value={type}>
-                        {type}
-                      </option>
-                    ))}
-                  </select>
+                    modalTitle="Select document type"
+                    options={VERIFICATION_DOCUMENT_TYPES}
+                    triggerClassName="h-11 px-3.5 rounded-xl text-sm font-normal"
+                  />
                 </div>
 
                 <div>

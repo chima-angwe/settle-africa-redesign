@@ -1,6 +1,6 @@
 import type React from "react";
 import { useState, useRef } from "react";
-import { Icon } from "@/shared/ui";
+import { CustomSelect, Icon } from "@/shared/ui";
 import { downloadTransferReceipt } from "@/shared/lib";
 import type { AccountType, Page } from "@/shared/types";
 import type { Transfer } from "@/entities/transfer";
@@ -478,17 +478,17 @@ export function SendMoney(props: SendMoneyProps) {
                         </div>
                       </div>
                       {flow.linkedBanks.length > 1 && (
-                        <select
+                        <CustomSelect
                           value={flow.linkedBankId}
-                          onChange={(e) => flow.setLinkedBankId(e.target.value)}
-                          className="bg-soft border border-line text-ink rounded-lg px-2 py-1 text-xs outline-none"
-                        >
-                          {flow.linkedBanks.map((b) => (
-                            <option key={b.id} value={b.id}>
-                              {b.account}
-                            </option>
-                          ))}
-                        </select>
+                          onChange={flow.setLinkedBankId}
+                          modalTitle="Select linked bank account"
+                          options={flow.linkedBanks.map((b) => ({
+                            value: b.id,
+                            label: b.account,
+                            description: b.bank,
+                          }))}
+                          triggerClassName="h-8 px-2.5 rounded-lg bg-soft text-xs font-medium"
+                        />
                       )}
                     </div>
                   )}
@@ -682,17 +682,13 @@ export function SendMoney(props: SendMoneyProps) {
                                   <label className="text-xs font-medium text-muted block mb-1.5">
                                     ID presented at pickup
                                   </label>
-                                  <select
+                                  <CustomSelect
                                     value={flow.pickupIdType}
-                                    onChange={(e) => flow.setPickupIdType(e.target.value)}
-                                    className="w-full h-10 pl-3 pr-8 border border-line rounded-xl bg-paper text-ink text-xs outline-none focus:border-ink cursor-pointer"
-                                  >
-                                    {PICKUP_ID_TYPES.map((idType) => (
-                                      <option key={idType} value={idType}>
-                                        {idType}
-                                      </option>
-                                    ))}
-                                  </select>
+                                    onChange={flow.setPickupIdType}
+                                    modalTitle="Select ID presented at pickup"
+                                    options={PICKUP_ID_TYPES}
+                                    triggerClassName="h-10 px-3 rounded-xl text-xs font-medium"
+                                  />
                                 </div>
                               </div>
                             )}
@@ -835,20 +831,15 @@ export function SendMoney(props: SendMoneyProps) {
                       <label className="text-xs font-medium text-muted block mb-1.5">
                         {flow.deliverySpec.providerLabel}
                       </label>
-                      <select
+                      <CustomSelect
                         value={flow.bankName}
-                        onChange={(e) => flow.setBankName(e.target.value)}
+                        onChange={flow.setBankName}
                         disabled={flow.availableProviders.length === 0}
-                        className={`w-full h-11 pl-3.5 pr-10 border rounded-xl bg-paper text-ink text-sm outline-none focus:border-ink font-medium cursor-pointer disabled:opacity-50 ${
-                          flow.fieldErrors.provider ? "border-rose-500" : "border-line"
-                        }`}
-                      >
-                        {flow.availableProviders.map((b) => (
-                          <option key={b} value={b}>
-                            {b}
-                          </option>
-                        ))}
-                      </select>
+                        modalTitle={`Select ${flow.deliverySpec.providerLabel.toLowerCase()}`}
+                        options={flow.availableProviders}
+                        hasError={Boolean(flow.fieldErrors.provider)}
+                        triggerClassName="h-11 px-3.5 rounded-xl text-sm font-medium"
+                      />
                       {flow.fieldErrors.provider && (
                         <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-1">
                           {flow.fieldErrors.provider}
@@ -924,17 +915,13 @@ export function SendMoney(props: SendMoneyProps) {
                           <label className="text-xs font-medium text-muted block mb-1.5">
                             Government ID presented at pickup
                           </label>
-                          <select
+                          <CustomSelect
                             value={flow.pickupIdType}
-                            onChange={(e) => flow.setPickupIdType(e.target.value)}
-                            className="w-full h-11 pl-3.5 pr-10 border border-line rounded-xl bg-paper text-ink text-sm outline-none focus:border-ink font-medium cursor-pointer"
-                          >
-                            {PICKUP_ID_TYPES.map((idType) => (
-                              <option key={idType} value={idType}>
-                                {idType}
-                              </option>
-                            ))}
-                          </select>
+                            onChange={flow.setPickupIdType}
+                            modalTitle="Select government ID for pickup"
+                            options={PICKUP_ID_TYPES}
+                            triggerClassName="h-11 px-3.5 rounded-xl text-sm font-medium"
+                          />
                         </div>
                       </div>
                     ) : (
