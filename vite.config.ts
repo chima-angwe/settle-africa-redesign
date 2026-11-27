@@ -35,7 +35,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [tailwindcss(), react()],
-    envPrefix: ["VITE_", "SETTLE_AFRICA_"],
+    envPrefix: ["VITE_", "SETTLE_AFRICA_", "BY_PASS_"],
     server: {
       port: 3000,
       ...(proxy ? { proxy } : {}),

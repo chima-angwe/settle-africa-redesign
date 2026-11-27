@@ -1,5 +1,4 @@
 import {
-  LAUNCH_ROUTE_COUNTRIES,
   SendMoney,
   type SendMoneyProps,
 } from "@/features/send-money";
@@ -20,8 +19,11 @@ export function SendMoneyPage(props: SendMoneyProps) {
           }}
           toCountry={flow.targetCountry}
           onToCountryChange={(country) => flow.setTargetCountry(country)}
-          fromCountries={LAUNCH_ROUTE_COUNTRIES}
-          toCountries={LAUNCH_ROUTE_COUNTRIES}
+          fromCountries={flow.supportedCountries}
+          toCountries={flow.supportedCountries}
+          ratesMap={flow.localeRatesMap}
+          currencyByCountry={flow.currencyByCountry}
+          isoByCountry={flow.isoByCountry}
           onSwap={flow.swapCountries}
           feeAmount={flow.calculation.feeAmount}
           totalDebit={flow.calculation.totalDebit}

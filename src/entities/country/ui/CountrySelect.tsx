@@ -9,6 +9,7 @@ export interface CountrySelectProps {
   placeholder?: string;
   className?: string;
   countries?: readonly string[];
+  isoByCountry?: Record<string, string>;
 }
 
 export function CountrySelect({
@@ -17,21 +18,27 @@ export function CountrySelect({
   placeholder = "Choose a country",
   className = "",
   countries: allowedCountries,
+  isoByCountry,
 }: CountrySelectProps) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const selectedCode = countryFlag(value);
+  const selectedCode = value ? (isoByCountry?.[value] || countryFlag(value)).toLowerCase() : "";
   const availableCountries =
-    allowedCountries && allowedCountries.length > 0 ? allowedCountries : allCountries;
+    allowedCountries !== undefined ? allowedCountries : allCountries;
 
   const options = useMemo(
     () =>
       availableCountries.map((country) => ({
         value: country,
         label: country,
-        icon: <CountryFlag code={countryFlag(country)} country={country} />,
+        icon: (
+          <CountryFlag
+            code={(isoByCountry?.[country] || countryFlag(country)).toLowerCase()}
+            country={country}
+          />
+        ),
       })),
-    [availableCountries],
+    [availableCountries, isoByCountry],
   );
 
   return (
@@ -39,17 +46,20 @@ export function CountrySelect({
       <button
         ref={triggerRef}
         type="button"
-        className="country-select-trigger flex w-full h-10 items-center gap-2 px-3 border border-line rounded-[2px] bg-paper text-ink text-[11px] text-left hover:border-ink transition-colors cursor-pointer"
+        disabled={availableCountries.length === 0}
+        className="country-select-trigger flex w-full h-10 items-center gap-2 px-3 border border-line rounded-[2px] bg-paper text-ink text-[11px] text-left hover:border-ink transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
       >
-        {value ? (
+        {value && selectedCode ? (
           <CountryFlag code={selectedCode} country={value} />
         ) : (
           <span className="country-flag-empty w-4 h-3 bg-soft border border-line rounded-xs" />
         )}
-        <strong className="flex-1 font-medium truncate">{value || placeholder}</strong>
+        <strong className="flex-1 font-medium truncate">
+          {availableCountries.length === 0 ? "Loading countries..." : value || placeholder}
+        </strong>
         <Icon
           name="chevron"
           size={16}

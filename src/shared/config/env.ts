@@ -41,8 +41,12 @@ function parseTimeoutMs(rawTimeout: string | undefined): number {
   return parsed;
 }
 
+function parseBooleanFlag(rawValue: string | undefined): boolean {
+  return (rawValue ?? "").replace(/;+$/, "").trim().toLowerCase() === "true";
+}
+
 const rawApiBaseUrl = normalizeBaseUrl(import.meta.env.SETTLE_AFRICA_BASE_URL);
-const useDirectUrlInDev = import.meta.env.SETTLE_AFRICA_USE_DIRECT_URL === "true";
+const useDirectUrlInDev = parseBooleanFlag(import.meta.env.SETTLE_AFRICA_USE_DIRECT_URL);
 const shouldUseDevProxy =
   import.meta.env.DEV &&
   !useDirectUrlInDev &&
@@ -53,6 +57,7 @@ export const env = {
   directApiBaseUrl: rawApiBaseUrl,
   apiTimeoutMs: parseTimeoutMs(import.meta.env.SETTLE_AFRICA_API_TIMEOUT_MS),
   shellToken: import.meta.env.SETTLE_AFRICA_SHELL_TOKEN?.trim() ?? "",
+  bypassKycVerification: parseBooleanFlag(import.meta.env.BY_PASS_KYC_VERIFICATION),
   isDev: import.meta.env.DEV,
   isProd: import.meta.env.PROD,
 } as const;

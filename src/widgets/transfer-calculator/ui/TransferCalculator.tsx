@@ -13,6 +13,9 @@ export interface TransferCalculatorProps {
   onToCountryChange?: (country: string, currency: string) => void;
   fromCountries?: readonly string[];
   toCountries?: readonly string[];
+  ratesMap?: Record<string, number>;
+  currencyByCountry?: Record<string, string>;
+  isoByCountry?: Record<string, string>;
   onSwap?: () => void;
   feeAmount?: number;
   totalDebit?: number;
@@ -28,6 +31,9 @@ export function TransferCalculator({
   onToCountryChange,
   fromCountries,
   toCountries,
+  ratesMap,
+  currencyByCountry,
+  isoByCountry,
   onSwap,
 }: TransferCalculatorProps) {
   const [internalAmount, setInternalAmount] = useState("500");
@@ -55,10 +61,19 @@ export function TransferCalculator({
     else setInternalToCountry(country);
   };
 
-  const from = countryCurrencies[fromCountry] || "NGN";
-  const to = countryCurrencies[toCountry] || "KES";
+  const from =
+    currencyByCountry?.[fromCountry] ||
+    (fromCountries !== undefined ? "" : countryCurrencies[fromCountry] || "NGN");
+  const to =
+    currencyByCountry?.[toCountry] ||
+    (toCountries !== undefined ? "" : countryCurrencies[toCountry] || "KES");
 
-  const rate = getExchangeRate(from, to);
+  const rate =
+    ratesMap !== undefined
+      ? from && to
+        ? getExchangeRate(from, to, ratesMap, {})
+        : 0
+      : getExchangeRate(from || "NGN", to || "KES");
   const numericAmount = parseFloat(amount) || 0;
   const safeAmount = Math.max(0, numericAmount);
   const converted = safeAmount * rate;
@@ -116,6 +131,8 @@ export function TransferCalculator({
               country={fromCountry}
               onChange={setFromCountry}
               countries={fromCountries}
+              currencyByCountry={currencyByCountry}
+              isoByCountry={isoByCountry}
               ariaLabel="From African country and currency"
             />
           </div>
@@ -171,6 +188,8 @@ export function TransferCalculator({
               country={toCountry}
               onChange={setToCountry}
               countries={toCountries}
+              currencyByCountry={currencyByCountry}
+              isoByCountry={isoByCountry}
               ariaLabel="To African country and currency"
             />
           </div>

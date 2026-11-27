@@ -1,23 +1,25 @@
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { getErrorMessage } from "@/shared/api";
 import { CustomSelect, Icon } from "@/shared/ui";
 import { formatTransferTimestamp, parseCsvLine } from "@/shared/lib";
 import type { Transfer } from "@/entities/transfer";
-import { countries, CountryBadge } from "@/entities/country";
+import { CountryBadge } from "@/entities/country";
+import { useLocales } from "@/features/locales";
 import {
   VerificationGateBanner,
   type VerificationStatus,
 } from "@/features/manage-profile";
 import {
-  CORRIDOR_BANKS,
-  COUNTRY_TO_CURRENCY,
   INITIAL_CORPORATE_FUNDING_SOURCES,
   STORAGE_KEYS,
   SUCCESS_PROBABILITY,
   ScheduledPaymentControl,
   getScheduleLabel,
   getTomorrowIsoDate,
-  resolveInterbankAccountName,
+  sendMoneyKeys,
+  sendMoneyService,
   type CorporateFundingSource,
   type ScheduleConfig,
 } from "@/features/send-money";
@@ -41,31 +43,20 @@ interface BulkRecipientRow {
   amount: string;
   narration: string;
   isLookingUp?: boolean;
+  lookupError?: string;
 }
 
-const CURRENCY_SYMBOLS: Record<string, string> = {
-  NGN: "₦",
-  KES: "KSh ",
-  GHS: "GH₵ ",
-  ZAR: "R ",
-  RWF: "FRw ",
-  UGX: "USh ",
-  EGP: "E£ ",
-  TZS: "TSh ",
-  XOF: "CFA ",
-  USD: "$",
-};
-
-function createEmptyRow(indexKey?: string): BulkRecipientRow {
+function createEmptyRow(indexKey?: string, defaultCountry = ""): BulkRecipientRow {
   return {
     key: indexKey || `row-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
-    country: "Nigeria",
+    country: defaultCountry,
     accountNumber: "",
     bank: "",
     recipientName: "",
     amount: "",
     narration: "",
     isLookingUp: false,
+    lookupError: undefined,
   };
 }
 
@@ -76,12 +67,28 @@ export function BulkTransfer({
   verificationStatus,
   onOpenVerification,
 }: BulkTransferProps) {
+  const queryClient = useQueryClient();
+  const localesQuery = useLocales();
+  const locales = useMemo(() => localesQuery.data ?? [], [localesQuery.data]);
+  const supportedCountries = useMemo(
+    () => locales.map((locale) => locale.name),
+    [locales],
+  );
+  const localesByCountry = useMemo(() => {
+    const map = new Map<string, (typeof locales)[number]>();
+    for (const locale of locales) {
+      map.set(locale.name.toLowerCase(), locale);
+    }
+    return map;
+  }, [locales]);
+
   const isVerificationBlocked = Boolean(
     verificationStatus && verificationStatus !== "approved",
   );
   const [rows, setRows] = useState<BulkRecipientRow[]>(() => [
-    createEmptyRow("row-initial-1"),
+    createEmptyRow("row-initial-1", ""),
   ]);
+  const lookupSeqRef = useRef<Record<string, number>>({});
   const [step, setStep] = useState<BulkStep>("form");
   const [submitted, setSubmitted] = useState<Transfer[]>([]);
   const [batchId, setBatchId] = useState("");
@@ -141,7 +148,7 @@ export function BulkTransfer({
   const isRowVerified = (row: BulkRecipientRow) => {
     const cleanDigits = row.accountNumber.replace(/\D/g, "");
     return (
-      cleanDigits.length >= 8 &&
+      cleanDigits.length >= 10 &&
       Boolean(row.bank.trim()) &&
       Boolean(row.recipientName.trim())
     );
@@ -155,9 +162,10 @@ export function BulkTransfer({
   const verifiedCount = rows.filter(isRowVerified).length;
   const validRows = rows.filter(isRowValid);
 
-  const primaryCurrency =
-    COUNTRY_TO_CURRENCY[rows[0]?.country || "Nigeria"] || "NGN";
-  const primarySymbol = CURRENCY_SYMBOLS[primaryCurrency] || "₦";
+  const firstLocale =
+    localesByCountry.get((rows[0]?.country || "").toLowerCase()) ?? locales[0] ?? null;
+  const primaryCurrency = firstLocale?.currency.code || "";
+  const primarySymbol = firstLocale?.currency.symbol || (primaryCurrency ? `${primaryCurrency} ` : "");
 
   const totalAmount = rows.reduce((sum, row) => {
     const val = Number(row.amount);
@@ -174,25 +182,66 @@ export function BulkTransfer({
       clearTimeout(lookupTimersRef.current[key]);
     }
 
-    if (digits.length >= 8 && bankName) {
+    const locale =
+      localesByCountry.get(country.toLowerCase()) ?? locales[0] ?? null;
+    const matchedMethod = locale?.methods.find(
+      (method) =>
+        method.name.toLowerCase() === bankName.toLowerCase() ||
+        method.id === bankName,
+    );
+    const bankId = matchedMethod?.id?.trim() || "";
+
+    if (digits.length >= 10 && bankId) {
+      const seq = (lookupSeqRef.current[key] ?? 0) + 1;
+      lookupSeqRef.current[key] = seq;
       setRows((prev) =>
-        prev.map((r) => (r.key === key ? { ...r, isLookingUp: true } : r))
+        prev.map((r) =>
+          r.key === key ? { ...r, isLookingUp: true, lookupError: undefined } : r,
+        )
       );
       lookupTimersRef.current[key] = setTimeout(() => {
-        const resolved = resolveInterbankAccountName(digits, bankName, country);
-        setRows((prev) =>
-          prev.map((r) =>
-            r.key === key
-              ? { ...r, recipientName: resolved, isLookingUp: false }
-              : r
-          )
-        );
+        void queryClient
+          .fetchQuery({
+            queryKey: sendMoneyKeys.lookup(digits, bankId),
+            queryFn: ({ signal }) => sendMoneyService.lookupAccount(digits, bankId, signal),
+            staleTime: 60 * 1000,
+          })
+          .then((result) => {
+            if (lookupSeqRef.current[key] !== seq) return;
+            setRows((prev) =>
+              prev.map((r) =>
+                r.key === key
+                  ? {
+                      ...r,
+                      recipientName: result.name,
+                      lookupError: undefined,
+                      isLookingUp: false,
+                    }
+                  : r,
+              ),
+            );
+          })
+          .catch((err) => {
+            if (lookupSeqRef.current[key] !== seq) return;
+            setRows((prev) =>
+              prev.map((r) =>
+                r.key === key
+                  ? {
+                      ...r,
+                      recipientName: "",
+                      lookupError: getErrorMessage(err, "Unable to verify account name."),
+                      isLookingUp: false,
+                    }
+                  : r,
+              ),
+            );
+          });
       }, 300);
     } else {
       setRows((prev) =>
         prev.map((r) =>
           r.key === key
-            ? { ...r, recipientName: "", isLookingUp: false }
+            ? { ...r, recipientName: "", lookupError: undefined, isLookingUp: false }
             : r
         )
       );
@@ -208,18 +257,20 @@ export function BulkTransfer({
     setRows((current) =>
       current.map((row) => {
         if (row.key !== key) return row;
+        const resolvedCountry =
+          row.country || locales[0]?.name || "";
 
         if (field === "accountNumber") {
           const clean = value.replace(/\D/g, "").slice(0, 16);
-          const nextRow = { ...row, accountNumber: clean };
-          triggerNameLookup(key, clean, nextRow.bank, nextRow.country);
+          const nextRow = { ...row, country: resolvedCountry, accountNumber: clean };
+          triggerNameLookup(key, clean, nextRow.bank, resolvedCountry);
           return nextRow;
         }
 
         if (field === "bank") {
-          const nextRow = { ...row, bank: value };
+          const nextRow = { ...row, country: resolvedCountry, bank: value };
           const digits = nextRow.accountNumber.replace(/\D/g, "");
-          triggerNameLookup(key, digits, value, nextRow.country);
+          triggerNameLookup(key, digits, value, resolvedCountry);
           return nextRow;
         }
 
@@ -229,6 +280,7 @@ export function BulkTransfer({
             country: value,
             bank: "",
             recipientName: "",
+            lookupError: undefined,
           };
           return nextRow;
         }
@@ -239,7 +291,7 @@ export function BulkTransfer({
   };
 
   const addRow = () => {
-    setRows((current) => [...current, createEmptyRow()]);
+    setRows((current) => [...current, createEmptyRow(undefined, locales[0]?.name || "")]);
   };
 
   const removeRow = (key: string) => {
@@ -283,21 +335,17 @@ export function BulkTransfer({
 
       const imported: BulkRecipientRow[] = lines.slice(1).map((line, idx) => {
         const cells = parseCsvLine(line);
-        const rawCountry = countryIdx >= 0 ? cells[countryIdx] || "Nigeria" : "Nigeria";
-        const matchedCountry =
-          countries.find((c) => c.toLowerCase() === rawCountry.toLowerCase()) ||
-          "Nigeria";
+        const rawCountry = countryIdx >= 0 ? cells[countryIdx] || "" : "";
+        const matchedLocale =
+          localesByCountry.get(rawCountry.toLowerCase()) ?? locales[0] ?? null;
+        const matchedCountry = matchedLocale?.name || rawCountry.trim();
         const rawAcc = (cells[accIdx] || "").replace(/\D/g, "").slice(0, 16);
         const rawBank =
           bankIdx >= 0
             ? cells[bankIdx] || ""
-            : (CORRIDOR_BANKS[matchedCountry] || CORRIDOR_BANKS.Nigeria)[0] || "";
+            : matchedLocale?.methods[0]?.name || "";
         const resolvedName =
-          nameIdx >= 0 && cells[nameIdx]?.trim()
-            ? cells[nameIdx].trim()
-            : rawAcc.length >= 8 && rawBank
-              ? resolveInterbankAccountName(rawAcc, rawBank, matchedCountry)
-              : "";
+          nameIdx >= 0 && cells[nameIdx]?.trim() ? cells[nameIdx].trim() : "";
 
         return {
           key: `csv-${Date.now()}-${idx}`,
@@ -308,6 +356,7 @@ export function BulkTransfer({
           amount: cells[amountIdx] || "",
           narration: narrationIdx >= 0 ? cells[narrationIdx] || "" : "",
           isLookingUp: false,
+          lookupError: undefined,
         };
       });
 
@@ -385,12 +434,14 @@ export function BulkTransfer({
       const id = "BT-" + String(now).slice(-7);
       const timestamp = formatTransferTimestamp();
       const created: Transfer[] = rows.map((row, index) => {
-        const curr = COUNTRY_TO_CURRENCY[row.country] || "NGN";
+        const rowLocale =
+          localesByCountry.get((row.country || "").toLowerCase()) ?? locales[0] ?? null;
+        const curr = rowLocale?.currency.code || "";
         return {
           id: "BP-" + String(now).slice(-6) + "-" + String(index + 1).padStart(2, "0"),
           batchId: id,
           name: row.recipientName.trim(),
-          country: row.country,
+          country: rowLocale?.name || row.country,
           amount: Number(row.amount),
           currency: curr,
           provider: row.bank,
@@ -529,8 +580,10 @@ export function BulkTransfer({
               </div>
               <div className="divide-y divide-line max-h-72 overflow-y-auto">
                 {rows.map((row) => {
-                  const curr = COUNTRY_TO_CURRENCY[row.country] || "NGN";
-                  const sym = CURRENCY_SYMBOLS[curr] || `${curr} `;
+                  const rowLocale =
+                    localesByCountry.get((row.country || "").toLowerCase()) ?? locales[0] ?? null;
+                  const curr = rowLocale?.currency.code || "";
+                  const sym = rowLocale?.currency.symbol || (curr ? `${curr} ` : "");
                   return (
                     <div
                       key={row.key}
@@ -814,7 +867,8 @@ export function BulkTransfer({
                   Completed
                 </span>
                 <strong className="text-xs font-heading font-bold text-ink font-mono">
-                  {CURRENCY_SYMBOLS[t.currency] || `${t.currency} `}
+                  {locales.find((locale) => locale.currency.code === t.currency)?.currency.symbol ||
+                    (t.currency ? `${t.currency} ` : "")}
                   {t.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                 </strong>
                 <button
@@ -873,6 +927,19 @@ export function BulkTransfer({
           accountType="business"
           onOpenVerification={onOpenVerification}
         />
+      )}
+
+      {localesQuery.isError && (
+        <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-between gap-3 text-xs text-rose-700 dark:text-rose-300 font-medium">
+          <span>{getErrorMessage(localesQuery.error, "Unable to load supported countries and banks.")}</span>
+          <button
+            type="button"
+            onClick={() => void localesQuery.refetch()}
+            className="font-semibold underline hover:opacity-80 shrink-0 cursor-pointer"
+          >
+            Retry
+          </button>
+        </div>
       )}
 
       {error && (
@@ -954,9 +1021,13 @@ export function BulkTransfer({
 
         <div className="space-y-4">
           {rows.map((row, index) => {
-            const rowCurrency = COUNTRY_TO_CURRENCY[row.country] || "NGN";
-            const rowSymbol = CURRENCY_SYMBOLS[rowCurrency] || "₦";
-            const banks = CORRIDOR_BANKS[row.country] || CORRIDOR_BANKS.Nigeria;
+            const rowLocale =
+              localesByCountry.get((row.country || "").toLowerCase()) ?? locales[0] ?? null;
+            const effectiveRowCountry = rowLocale?.name || "";
+            const rowCurrency = rowLocale?.currency.code || "";
+            const rowSymbol =
+              rowLocale?.currency.symbol || (rowCurrency ? `${rowCurrency} ` : "");
+            const banks = (rowLocale?.methods ?? []).map((method) => method.name);
             const verified = isRowVerified(row);
 
             return (
@@ -971,13 +1042,15 @@ export function BulkTransfer({
                       RECIPIENT {index + 1}
                     </span>
                     <CustomSelect
-                      value={row.country}
+                      value={effectiveRowCountry}
                       onChange={(value) =>
                         handleFieldChange(row.key, "country", value)
                       }
+                      disabled={supportedCountries.length === 0}
+                      placeholder={localesQuery.isLoading ? "Loading..." : "Select country"}
                       ariaLabel={`Recipient ${index + 1} country`}
                       modalTitle={`Recipient ${index + 1} country`}
-                      options={Object.keys(CORRIDOR_BANKS)}
+                      options={supportedCountries}
                       triggerClassName="h-8 px-2.5 rounded-lg bg-soft text-[11px] font-medium"
                     />
                     {verified && (
@@ -1034,7 +1107,8 @@ export function BulkTransfer({
                       onChange={(value) =>
                         handleFieldChange(row.key, "bank", value)
                       }
-                      placeholder="Select bank..."
+                      disabled={banks.length === 0}
+                      placeholder={banks.length === 0 ? "Loading banks..." : "Select bank..."}
                       modalTitle="Select recipient bank"
                       options={banks}
                       triggerClassName="h-11 px-3.5 rounded-xl text-xs sm:text-sm font-normal"
@@ -1063,6 +1137,11 @@ export function BulkTransfer({
                       placeholder="Auto-filled on lookup"
                       className="w-full h-11 px-3.5 border border-line rounded-xl bg-soft text-ink text-xs sm:text-sm outline-none focus:border-ink placeholder:text-muted/60"
                     />
+                    {!row.isLookingUp && row.lookupError && (
+                      <p className="text-[11px] text-rose-600 dark:text-rose-400">
+                        {row.lookupError}
+                      </p>
+                    )}
                   </div>
 
                   {/* Amount */}

@@ -25,6 +25,11 @@ export interface Transfer {
   pickupCity?: string;
   recipientPhone?: string;
   deliveryInstructions?: string;
+  payTo?: {
+    bankName: string;
+    accountNumber: string;
+    accountName: string;
+  };
 }
 
 export interface BulkDraft {

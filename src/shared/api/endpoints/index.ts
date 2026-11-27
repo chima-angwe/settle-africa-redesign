@@ -5,3 +5,5 @@ export { transferEndpoints } from "./transfers";
 export { walletEndpoints } from "./wallet";
 export { profileEndpoints } from "./profile";
 export { rateEndpoints } from "./rates";
+export { localesEndpoints } from "./locales";
+

@@ -1,13 +1,37 @@
+export interface TransactionDestinationDto {
+  country?: unknown;
+  name?: unknown;
+  category?: unknown;
+  means?: unknown;
+  meansid?: unknown;
+  method?: unknown;
+  details?: {
+    phone?: unknown;
+    mail?: unknown;
+    address?: unknown;
+  } | null;
+}
+
 export interface TransactionHistoryItemDto {
-  id: string;
-  recipient: string;
-  country: string;
-  amount: number;
-  status: string;
-  timestamp: string;
+  id: unknown;
+  recipient?: unknown;
+  country?: unknown;
+  amount: unknown;
+  currency?: unknown;
+  status: unknown;
+  timestamp?: unknown;
+  statusdate?: unknown;
+  destination?: unknown;
 }
 
 export interface TransactionHistoryResponseDto {
   status: string;
-  data: TransactionHistoryItemDto[];
+  message?: string;
+  code?: string | number;
+  locale?: string;
+  data:
+    | TransactionHistoryItemDto[]
+    | {
+        transactions?: TransactionHistoryItemDto[];
+      };
 }
